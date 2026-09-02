@@ -2312,30 +2312,44 @@ async function ensureDefaultWatchlist() {
   }
 }
 
-// Price-board API keys: every active per-user account key, plus the env keys as
-// fallback, deduped. The watchlist is spread across these keys so each key only
-// pings its own slice once per cycle — no single key trips Torn's rate limit.
+// Price-board API keys: one key per Torn account (torn_player_id), deduped.
+// Torn's limit is 100 req/min *per user across all of their keys*, so a second
+// key for the same account buys nothing — it just double-taxes one account. We
+// use the per-user account keys (not the env full-access key, which is already
+// busy running faction monitors) so the watchlist spreads evenly across accounts.
 let boardKeys = [];
 
 function buildBoardKeys() {
-  const seen = new Set();
+  const seenAccount = new Set();
+  const seenKey = new Set();
   const pool = [];
   for (const acct of accountStore.getAllAccounts()) {
     if (acct.status !== 'active') continue;
     let key = null;
     try { key = accountStore.getApiKey(acct.discord_user_id); } catch (e) {}
-    if (key && typeof key === 'string' && key.length > 10 && !seen.has(key)) {
-      seen.add(key);
-      pool.push(key);
-    }
+    if (!key || typeof key !== 'string' || key.length <= 10) continue;
+    const acctId = String(acct.torn_player_id || '');
+    if (acctId && seenAccount.has(acctId)) continue;   // one key per Torn account
+    if (seenKey.has(key)) continue;
+    seenKey.add(key);
+    if (acctId) seenAccount.add(acctId);
+    pool.push(key);
   }
-  for (const k of [TORN_API_KEY, TORN_API_KEY_2]) {
-    if (k && typeof k === 'string' && k.length > 10 && !seen.has(k)) {
-      seen.add(k);
-      pool.push(k);
+  // Fallback only if no per-user keys exist — the env keys are the same accounts.
+  if (!pool.length) {
+    for (const k of [TORN_API_KEY, TORN_API_KEY_2]) {
+      if (k && typeof k === 'string' && k.length > 10 && !seenKey.has(k)) {
+        seenKey.add(k);
+        pool.push(k);
+      }
     }
   }
   return pool;
+}
+
+function pricePollMs() {
+  const v = parseInt(process.env.PRICE_POLL_INTERVAL, 10);
+  return Number.isFinite(v) && v > 0 ? v * 1000 : 10000;
 }
 
 async function startPriceWatcher() {
@@ -2343,12 +2357,15 @@ async function startPriceWatcher() {
   await ensureDefaultWatchlist();
   boardKeys = buildBoardKeys();
   const n = boardKeys.length || 1;
-  const cycleMs = 40000;
+  const cycleMs = pricePollMs();
   const offsetMs = Math.round(cycleMs / n);
-  console.log(`[discord-bot] price watcher started (${priceData.watchlist.length} items, ${n} key(s), ${cycleMs / 1000}s cycle, ${offsetMs}ms offset)`);
+  console.log(`[discord-bot] price watcher started (${priceData.watchlist.length} items, ${n} account(s), ${cycleMs / 1000}s cycle, ${offsetMs}ms offset)`);
   boardKeys.forEach((key, i) => {
-    setTimeout(() => pollPrices(i, key), i * offsetMs);
-    setInterval(() => pollPrices(i, key), cycleMs);
+    const delay = i * offsetMs;
+    setTimeout(() => {
+      pollPrices(i, key);
+      setInterval(() => pollPrices(i, key), cycleMs);
+    }, delay);
   });
   pollInactive();
   setInterval(pollInactive, 300000);
@@ -2652,7 +2669,7 @@ async function pollPrices(groupIdx = 0, key = TORN_API_KEY) {
 let lastBoardRefresh = 0;
 function boardRefreshMs() {
   const v = parseInt(process.env.PRICE_BOARD_INTERVAL, 10);
-  return Number.isFinite(v) && v > 0 ? v * 1000 : 40000;
+  return Number.isFinite(v) && v > 0 ? v * 1000 : 10000;
 }
 async function maybeRefreshBoardAndAlerts() {
   const now = Date.now();
