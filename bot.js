@@ -156,7 +156,7 @@ const INTERVIEW = {
 const TORN_GUILD_ID = process.env.GUILD_ID || '';
 
 
-const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances', 'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say'];
+const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances', 'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say'];
 
 const TORN_HELP =
   '**Torn**\n' +
@@ -182,6 +182,8 @@ const TORN_HELP =
   '`!flipcalc <item> <qty> <buy> [sell]` — profit calculator\n' +
   '`!flips` — buy-low/sell-high\n' +
   '`!gain` — energy/nerve refill planner\n' +
+  '`!gain on|off` — DM when energy/nerve fills, a course completes, or a bank investment matures\n' +
+  '`!timers` — view your active timers now (bars, cooldowns, course, bank investment)\n' +
   '`!guide` — your personalized next steps\n' +
   '`!guide on|off` — daily guide DM (10:00 local, same message updated)\n' +
   '`!hj` / `!hj guide` — happy jump helper (energy, happy, drug/booster cooldowns)\n' +
@@ -510,6 +512,9 @@ async function handleCommand(message) {
       break;
     case 'gain':
       await handleGain(message, args);
+      break;
+    case 'timers':
+      await handleTimers(message);
       break;
     case 'crime':
     case 'crimeroute':
@@ -1450,6 +1455,23 @@ function saveGainWatch() {
   try { fs.writeFileSync(GAIN_WATCH_FILE, JSON.stringify(gainWatch)); } catch (e) {}
 }
 
+let eduNamesCache = null;
+async function loadCourseNames() {
+  if (eduNamesCache) return eduNamesCache;
+  try {
+    const d = await tornGet('torn', '', 'education', 1, TORN_API_KEY, { cacheTtl: 86400, retries: 1 });
+    const names = {};
+    for (const [id, c] of Object.entries(d.education || {})) names[id] = c.name;
+    eduNamesCache = names;
+  } catch (e) {
+    eduNamesCache = {};
+  }
+  return eduNamesCache;
+}
+function courseNameFor(id, names) {
+  return (names && names[String(id)]) || `course #${id}`;
+}
+
 function startGainMonitor(client) {
   gainClient = client;
   loadGainWatch();
@@ -1466,7 +1488,7 @@ async function pollGainWatch() {
     const apiKey = account ? accountStore.getApiKey(uid) : null;
     if (!apiKey) continue;
     let d;
-    try { d = await tornGet('user', '', 'bars,cooldowns', 1, apiKey); } catch (e) { continue; }
+    try { d = await tornGet('user', '', 'bars,cooldowns,education,money', 1, apiKey); } catch (e) { continue; }
     const sub = gainWatch[uid] || { energy: false, nerve: false };
     const msgs = [];
     if (d.energy && d.energy.current != null && d.energy.maximum != null) {
@@ -1479,10 +1501,30 @@ async function pollGainWatch() {
       if (full && !sub.nerve) msgs.push(`\u{1F9E9} Nerve full (${d.nerve.current}/${d.nerve.maximum}) \u2014 go do crimes!`);
       sub.nerve = full;
     }
+    const eduRunning = d.education_timeleft != null && Number(d.education_timeleft) > 0;
+    if (eduRunning) {
+      sub.educationHad = true;
+      sub.educationAlerted = false;
+      const names = await loadCourseNames();
+      sub.educationName = courseNameFor(d.education_current, names);
+    } else if (sub.educationHad && !sub.educationAlerted) {
+      msgs.push(`\u{1F393} **Course complete** \u2014 ${sub.educationName || 'your course'} is done. Start the next course!`);
+      sub.educationAlerted = true;
+      sub.educationHad = false;
+    }
+    const bankRunning = d.city_bank && Number(d.city_bank.time_left) > 0;
+    if (bankRunning) {
+      sub.bankHad = true;
+      sub.bankAlerted = false;
+    } else if (sub.bankHad && !sub.bankAlerted) {
+      msgs.push(`\u{1F4B3} **Bank investment complete** \u2014 collect the payout and start a new investment!`);
+      sub.bankAlerted = true;
+      sub.bankHad = false;
+    }
     if (msgs.length) {
       try {
         const user = await gainClient.users.fetch(uid);
-        if (user) await user.send(`\u{1F514} **Bar reminder**\n${msgs.join('\n')}`);
+        if (user) await user.send(`\u{1F514} **Timer reminder**\n${msgs.join('\n')}`);
       } catch (e) {
         console.error(`[gain] DM failed for ${uid}:`, e.message);
       }
@@ -1508,27 +1550,28 @@ async function handleGain(message, args) {
   const cmd = (args[0] || '').toLowerCase();
   if (cmd === 'on' || cmd === 'watch') {
     loadGainWatch();
-    let energyFull = false;
-    let nerveFull = false;
+    const sub = { energy: false, nerve: false, educationHad: false, educationAlerted: false, bankHad: false, bankAlerted: false };
     try {
-      const d = await tornGet('user', '', 'bars,cooldowns', 1, apiKey);
-      if (d.energy) energyFull = d.energy.current >= d.energy.maximum;
-      if (d.nerve) nerveFull = d.nerve.current >= d.nerve.maximum;
+      const d = await tornGet('user', '', 'bars,cooldowns,education,money', 1, apiKey);
+      if (d.energy) sub.energy = d.energy.current >= d.energy.maximum;
+      if (d.nerve) sub.nerve = d.nerve.current >= d.nerve.maximum;
+      if (d.education_timeleft != null && Number(d.education_timeleft) > 0) sub.educationHad = true;
+      if (d.city_bank && Number(d.city_bank.time_left) > 0) sub.bankHad = true;
     } catch (e) {}
-    gainWatch[userId] = { energy: energyFull, nerve: nerveFull };
+    gainWatch[userId] = sub;
     saveGainWatch();
-    await message.reply('\u{1F514} **Bar reminders ON** \u2014 I\'ll DM you the moment your Energy or Nerve fills up. `!gain off` to stop.');
+    await message.reply('\u{1F514} **Timer reminders ON** \u2014 I\'ll DM you the moment your Energy or Nerve fills up, your course completes, or your bank investment matures. `!gain off` to stop.');
     return;
   }
   if (cmd === 'off' || cmd === 'unwatch') {
     loadGainWatch();
     if (gainWatch[userId]) { delete gainWatch[userId]; saveGainWatch(); }
-    await message.reply('Bar reminders OFF.');
+    await message.reply('Timer reminders OFF.');
     return;
   }
   if (cmd === 'status') {
     loadGainWatch();
-    await message.reply(gainWatch[userId] ? 'Bar reminders are **ON** \u2014 you\'ll get a DM when Energy or Nerve fills.' : 'Bar reminders are OFF. Use `!gain on` to start.');
+    await message.reply(gainWatch[userId] ? 'Timer reminders are **ON** \u2014 I\'ll DM you when Energy/Nerve fills, a course completes, or a bank investment matures.' : 'Timer reminders are OFF. Use `!gain on` to start.');
     return;
   }
 
@@ -1562,6 +1605,64 @@ async function handleGain(message, args) {
     }
     lines.push('');
     lines.push('Tip: set a reminder at ~90% so you never waste regen \u2014 run \u2018!levelpacer\u2019 to check your pace.');
+    await reply.edit(lines.join('\n'));
+  } catch (e) {
+    await reply.edit(`Torn error: ${e.message}`);
+  }
+}
+
+async function handleTimers(message) {
+  const userId = message.author.id;
+  const account = accountStore.getAccount(userId);
+  if (!account) {
+    await message.reply('You haven\'t connected a Torn account yet.\nUse `!torn setup` to get started.');
+    return;
+  }
+  const apiKey = accountStore.getApiKey(userId);
+  if (!apiKey) {
+    await message.reply('Your API key could not be retrieved. Use `!torn setup` to reconnect.');
+    return;
+  }
+  const reply = await message.reply('Fetching\u2026');
+  try {
+    const d = await tornGet('user', '', 'bars,cooldowns,education,money', 1, apiKey);
+    const lines = [`\u23F1\uFE0F **${account.tornUsername}** \u2014 Timers`];
+    const addBar = (label, emoji, b) => {
+      if (!b) return;
+      const cur = b.current != null ? b.current : 0;
+      const max = b.maximum != null ? b.maximum : cur;
+      const missing = max - cur;
+      const inc = b.increment;
+      const interval = b.interval;
+      if (!inc || !interval || missing <= 0) {
+        lines.push(`${emoji} ${label}: **${cur}/${max}**`);
+        return;
+      }
+      lines.push(`${emoji} ${label}: **${cur}/${max}** \u2192 full in **${fmtTime(Math.ceil(missing / inc) * interval)}**`);
+    };
+    addBar('Energy', '\u26A1', d.energy);
+    addBar('Nerve', '\u{1F9E9}', d.nerve);
+    addBar('Happy', '\u{1F604}', d.happy);
+    if (d.cooldowns) {
+      const cd = [];
+      for (const k of ['drug', 'medical', 'booster']) {
+        if (d.cooldowns[k] != null && d.cooldowns[k] > 0) cd.push(`${k}: ${fmtTime(d.cooldowns[k])}`);
+      }
+      if (cd.length) lines.push(`\u23F1\uFE0F Cooldowns \u2014 ${cd.join('  \u2022  ')}`);
+    }
+    if (d.education_current != null && Number(d.education_timeleft) > 0) {
+      const names = await loadCourseNames();
+      lines.push(`\u{1F393} Course: **${courseNameFor(d.education_current, names)}** \u2014 ${fmtTime(d.education_timeleft)} left`);
+    } else {
+      lines.push(`\u{1F393} Course: none running \u2014 start one with a course from *!courses*`);
+    }
+    if (d.city_bank && Number(d.city_bank.time_left) > 0) {
+      lines.push(`\u{1F4B3} Bank investment: **$${shortMoney(d.city_bank.amount)}** \u2014 ${fmtTime(d.city_bank.time_left)} left`);
+    } else {
+      lines.push(`\u{1F4B3} Bank investment: none running \u2014 deposit with *!bank balance* advice`);
+    }
+    lines.push('');
+    lines.push('Tip: run `!gain on` to get a DM the moment any of these completes.');
     await reply.edit(lines.join('\n'));
   } catch (e) {
     await reply.edit(`Torn error: ${e.message}`);
