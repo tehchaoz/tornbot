@@ -52,6 +52,7 @@ Key variables:
 | `FACTION_ID` | Your faction's numeric ID (required for faction features) |
 | `BOARD_CHANNEL_IDS` | Channel(s) for the price board, comma-separated |
 | `CHAIN_CHANNEL_ID` | Channel for chain-monitoring alerts |
+| `MEMBER_INTRO_CHANNEL_ID` | `#member-intro` channel — the bot reads the timezone roster posted there and shows it in `!members` |
 | `PREFIX` | Command prefix (default `!`) |
 | `TORN_ENCRYPTION_KEY` | 64-char hex key used to encrypt stored member data — set your own |
 | `GUILD_ID` | Your Discord server ID (restricts rate-limited commands to one server) |
@@ -120,7 +121,8 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 | Command | What it does |
 |---|---|
 | `!faction [id]` | Faction info |
-| `!members` | Member status board |
+| `!members` | Member status board (shows timezone where known) |
+| `!tz <timezone>` | Set / update your timezone for `!members` |
 | `!roster [name]` | Member list with level / location / last-active / days |
 | `!activity [name]` | Faction member last-active tracking |
 | `!baldr <name>` \| `!baldr list <level>` \| `!baldr scan <id>` | Search Baldr's full levelling list |
@@ -132,6 +134,12 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 | `!wars` | Faction wars (ranked / raids / territory) |
 | `!chainreport` | Current + recent chain stats |
 | `!notify status` | Show faction alert monitors |
+
+> **Member timezones:** `!members` shows a member's timezone when it's known. Timezones come from three
+> places (highest priority first): an account's stored timezone (`!tz` / `!torn setup`), a matched entry in
+> the `#member-intro` roster (parsed automatically — `MEMBER_INTRO_CHANNEL_ID`), or not at all. Torn's API
+> does not expose member timezones, so the roster and `!tz` are the sources. Format lines in
+> `#member-intro` like `Name, Location, UTC-5` or `DiscordName: TornName, Location, UTC+1`.
 
 ### Progression & jobs
 | Command | What it does |

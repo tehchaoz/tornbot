@@ -40,7 +40,7 @@ async function handleTornSetup(message) {
     PENDING_SETUP.set(userId, { step: 'awaiting_key', startedAt: Date.now() });
 
     setTimeout(() => {
-      if (PENDING_SETUP.has(userId) && PENDING_SETUP.get(userId).step === 'awaiting_key') {
+      if (PENDING_SETUP.has(userId) && (PENDING_SETUP.get(userId).step === 'awaiting_key' || PENDING_SETUP.get(userId).step === 'awaiting_timezone')) {
         PENDING_SETUP.delete(userId);
       }
     }, 300000);
@@ -59,7 +59,26 @@ async function handleTornSetup(message) {
 async function handleDM(message) {
   const userId = message.author.id;
   const pending = PENDING_SETUP.get(userId);
-  if (!pending || pending.step !== 'awaiting_key') return false;
+  if (!pending) return false;
+
+  if (pending.step === 'awaiting_timezone') {
+    const tzValue = message.content.trim();
+    if (tzValue.toLowerCase() === 'cancel' || tzValue.toLowerCase() === 'skip') {
+      PENDING_SETUP.delete(userId);
+      await message.reply('No problem \u2014 you can set your timezone anytime with `!tz <timezone>` (e.g. `!tz Eastern US`).');
+      return true;
+    }
+    try {
+      accountStore.setTimezone(userId, tzValue);
+    } catch (e) {
+      console.error(`[torn-setup] failed to store timezone for ${userId}:`, e.message);
+    }
+    PENDING_SETUP.delete(userId);
+    await message.reply(`Timezone set: **${tzValue}** \u2014 it will now show in \`!members\`. If that\u2019s wrong, update it with \`!tz <timezone>\`.`);
+    return true;
+  }
+
+  if (pending.step !== 'awaiting_key') return false;
 
   const key = message.content.trim();
   if (!key || key.length < 10 || key.length > 50) {
@@ -95,7 +114,7 @@ try {
     }
 
     accountStore.saveAccount(userId, String(data.player_id), data.name || 'Unknown', key);
-    PENDING_SETUP.delete(userId);
+    PENDING_SETUP.set(userId, { step: 'awaiting_timezone', startedAt: Date.now() });
 
     const embed = new EmbedBuilder()
       .setTitle('Account Connected')
@@ -103,8 +122,9 @@ try {
         `**Torn Account:** ${data.name} (#${data.player_id})\n` +
         `**Level:** ${data.level || '?'}\n` +
         `**Rank:** ${data.rank || '?'}\n\n` +
-        'Your API key is encrypted and stored securely.\n' +
-        'You can now use commands like `!bars`, `!coach`, `!guide`.'
+        'Your account is connected. One optional step: **what\u2019s your timezone or location?**\n' +
+        'Type it now (e.g. `Eastern US`, `UTC+1`, `Australia`) so it can show in `!members`.\n' +
+        'Or reply `skip` to set it later with `!tz <timezone>`.'
       )
       .setColor(0x00ff00);
 
@@ -112,6 +132,7 @@ try {
       await message.reply({ embeds: [embed] });
     } catch (replyError) {
       console.error(`[torn-setup] failed to send confirmation DM to user ${userId}:`, replyError.message);
+      PENDING_SETUP.delete(userId);
     }
     console.log(`[torn-setup] user ${userId} connected to Torn ${data.name}#${data.player_id}`);
     return true;

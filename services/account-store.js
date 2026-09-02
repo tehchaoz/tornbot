@@ -39,6 +39,12 @@ function init() {
     console.log('[account-store] migrated torn_preferences: added target_whitelist');
   }
 
+  const acctCols = db.prepare('PRAGMA table_info(torn_accounts)').all().map(c => c.name);
+  if (!acctCols.includes('timezone')) {
+    db.exec(`ALTER TABLE torn_accounts ADD COLUMN timezone TEXT`);
+    console.log('[account-store] migrated torn_accounts: added timezone');
+  }
+
   console.log('[account-store] initialized at', DB_PATH);
 }
 
@@ -53,7 +59,15 @@ function getAccount(discordUserId) {
     updatedAt: row.updated_at,
     lastValidatedAt: row.last_validated_at,
     status: row.status,
+    timezone: row.timezone || null,
   };
+}
+
+function setTimezone(discordUserId, timezone) {
+  const tz = (timezone || '').trim();
+  db.prepare('UPDATE torn_accounts SET timezone = ?, updated_at = ? WHERE discord_user_id = ? AND status = ?')
+    .run(tz || null, Math.floor(Date.now() / 1000), discordUserId, 'active');
+  return getAccount(discordUserId);
 }
 
 function getApiKey(discordUserId) {
@@ -127,7 +141,7 @@ function updatePreferences(discordUserId, updates) {
 }
 
 function getAllAccounts() {
-  return db.prepare('SELECT discord_user_id, torn_player_id, torn_username, status, last_validated_at FROM torn_accounts').all();
+  return db.prepare('SELECT discord_user_id, torn_player_id, torn_username, status, last_validated_at, timezone FROM torn_accounts').all();
 }
 
 module.exports = {
@@ -135,6 +149,7 @@ module.exports = {
   getAccount,
   getApiKey,
   saveAccount,
+  setTimezone,
   removeAccount,
   getPreferences,
   updatePreferences,

@@ -2,6 +2,7 @@ node_modules/
 .env
 *.db
 prices.json
+member-timezones.json
 *.backup.*
 dmtest.js
 resetboard.js

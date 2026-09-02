@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, Events } = require('discord.js');
 const dotenv = require('dotenv');
 const fs = require('fs');
 const accountStore = require('./services/account-store');
+const timezoneRoster = require('./services/timezone-roster');
 const tornApi = require('./services/torn-api');
 const setupCommands = require('./commands/setup');
 const personalCommands = require('./commands/personal');
@@ -156,7 +157,7 @@ const INTERVIEW = {
 const TORN_GUILD_ID = process.env.GUILD_ID || '';
 
 
-const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances', 'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say'];
+const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz'];
 
 const TORN_HELP =
   '**Torn**\n' +
@@ -196,7 +197,8 @@ const TORN_HELP =
   '`!levelpacer` — time to next level\n' +
   '`!link <torn-id>` — link your Torn account\n' +
   '`!medals` / `!medals next` — medals earned + next\n' +
-  '`!members` — member status board\n' +
+  '`!members` — member status board (with timezone where known)\n' +
+  '`!tz <location>` — set/update your timezone or location for `!members`\n'+
   '`!merits` / `!merits next` / `!merits earned` — honor list + next-easiest to earn\n' +
   '`!museum` — museum sets + point payouts\n' +
   '`!networth` — your networth breakdown\n' +
@@ -350,6 +352,14 @@ client.once(Events.ClientReady, (c) => {
   } catch (e) {
     console.error('[discord-bot] account store init failed:', e.message);
   }
+  (async () => {
+    try {
+      const r = await timezoneRoster.refresh(c);
+      console.log(`[discord-bot] member-timezone roster: ${r.synced ? `synced ${r.count} entries` : `not synced (${r.reason})`}`);
+    } catch (e) {
+      console.error('[discord-bot] roster refresh failed:', e.message);
+    }
+  })();
   loadLinks();
   factionFeatures = createFactionFeatures({
     client,
@@ -451,6 +461,9 @@ async function handleCommand(message) {
       break;
     case 'members':
       await handleMembers(message);
+      break;
+    case 'tz':
+      await handleTimezone(message, rest);
       break;
     case 'territory':
       await handleTerritory(message);
@@ -759,12 +772,17 @@ async function handleMembers(message) {
   const reply = await message.reply('Fetching\u2026');
   try {
     const d = await tornGet('faction', FACTION_ID, 'basic');
+    const tzLookup = {};
+    for (const acct of accountStore.getAllAccounts()) {
+      if (acct.torn_username) tzLookup[acct.torn_username.trim().toLowerCase()] = acct.timezone || null;
+    }
     const entries = Object.values(d.members || {}).map((m) => ({
       name: m.name,
       level: m.level,
       position: m.position,
       online: m.last_action && m.last_action.status === 'Online',
       state: m.status ? m.status.state : null,
+      timezone: tzLookup[String(m.name).trim().toLowerCase()] || timezoneRoster.timezoneForTornName(m.name),
     }));
     entries.sort((a, b) => {
       if (a.online !== b.online) return a.online ? -1 : 1;
@@ -777,12 +795,30 @@ async function handleMembers(message) {
       else if (e.state === 'Hospital') icon = '\u{1F3E5}';
       else if (e.state === 'Traveling') icon = '\u2708\uFE0F';
       else if (e.state === 'Jail') icon = '\u{1F512}';
-      lines.push(`${icon} **${e.name}** \u2014 ${e.position}, L${e.level}`);
+      lines.push(`${icon} **${e.name}** \u2014 ${e.position}, L${e.level}${e.timezone ? `, ${e.timezone}` : ''}`);
     }
     await reply.edit(lines.join('\n'));
   } catch (e) {
     await reply.edit(`Torn error: ${e.message}`);
   }
+}
+
+async function handleTimezone(message, query) {
+  const userId = message.author.id;
+  const account = accountStore.getAccount(userId);
+  if (!account) {
+    await message.reply('Connect your Torn account first: `!torn setup`, then `!tz <timezone>`.\nOr set it in `#📌︱member-intro` and it will be picked up automatically.');
+    return;
+  }
+  const arg = (query || '').trim();
+  if (!arg) {
+    await message.reply(account.timezone
+      ? `Your recorded timezone is **${account.timezone}**. Update it with \`!tz <timezone>\`.`
+      : 'No timezone set yet. Use `!tz <timezone>` (e.g. `!tz Eastern US`, `!tz UTC+1`, `!tz Australia`).');
+    return;
+  }
+  accountStore.setTimezone(userId, arg);
+  await message.reply(`Timezone set: **${arg}** \u2014 it will now show in \`!members\`.`);
 }
 
 async function handleTerritory(message) {
