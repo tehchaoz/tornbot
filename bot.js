@@ -805,6 +805,7 @@ async function handleMembers(message) {
       const tz = e.timezone ? tzNormalize.normalize(e.timezone).display : null;
       let icon = '\u26AA';
       if (e.online) icon = '\u{1F7E2}';
+      else if (e.lastAction && (Date.now() / 1000 - e.lastAction) / 3600 < 0.25) icon = '\u{1F535}';
       else if (e.state === 'Traveling') icon = '\u2708\uFE0F';
       else if (e.state === 'Hospital') icon = '\u{1F3E5}';
       else if (e.state === 'Jail') icon = '\u{1F512}';
@@ -2674,6 +2675,7 @@ function memberStatusIcon(member) {
   const ts = member.last_action && member.last_action.timestamp;
   if (ts) {
     const hours = (Date.now() / 1000 - ts) / 3600;
+    if (hours < 0.25) return '\u{1F535}';
     if (hours < 48) return '\u26AA';
     if (hours < 168) return '\u{1F7E1}';
     return '\u{1F534}';
@@ -2719,7 +2721,7 @@ async function updateMembersBoardInChannel(channelId) {
     }));
     rows.sort((a, b) => {
       if (a.lastTs !== b.lastTs) return b.lastTs - a.lastTs;
-      if (a.icon !== b.icon) return (a.icon === '\u{1F7E2}' || a.icon === '\u2708\uFE0F') ? -1 : 1;
+      if (a.icon !== b.icon) return (a.icon === '\u{1F7E2}' || a.icon === '\u2708\uFE0F' || a.icon === '\u{1F535}') ? -1 : 1;
       return (b.level || 0) - (a.level || 0);
     });
 
@@ -2729,7 +2731,7 @@ async function updateMembersBoardInChannel(channelId) {
       lines.push(`${r.icon} [**${r.name}**](${profileUrl(r.playerId)}) \u2014 ${r.position}, L${r.level}${tz ? ` \u00B7 ${tz}` : ''}`);
     }
     const title = `\u{1F465} ${d.name || 'Faction'} Members \u2014 ${rows.length}`;
-    const footer = '\u{1F7E2} online \u00B7 \u2708 traveling \u00B7 \u26AA offline <2d \u00B7 \u{1F7E1} 2\u20136d \u00B7 \u{1F534} 7d+';
+    const footer = '\u{1F7E2} online \u00B7 \u{1F535} idle <15m \u00B7 \u2708 traveling \u00B7 \u26AA offline <2d \u00B7 \u{1F7E1} 2\u20136d \u00B7 \u{1F534} 7d+';
 
     const chunks = [];
     let cur = [];
