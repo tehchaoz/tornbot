@@ -147,8 +147,11 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 >
 > **Pinned members board:** `!members` is also posted as a pinned, auto-refreshing board in
 > `MEMBER_BOARD_CHANNEL_ID` (defaults to the `#member-intro` channel). Each entry links to the member's
-> Torn profile and shows an activity status icon: 🟢 online · 🔵 idle <15m · ✈️ traveling · ⚪ offline <2 days ·
-> 🟡 offline 2–6 days · 🔴 offline 7+ days. The board refreshes on the same cycle as the price board
+> Torn profile and shows an activity status icon. The key runs two lines — presence/timing on top,
+> actions below:
+> - 🟢 online · 🔵 idle <15m · ⚪ offline <2 days · 🟡 offline 2–6 days · 🔴 offline 7+ days
+> - ✈ traveling · 🌍 abroad · 🏥 hospital · 🔒 jail · 💀 fallen
+> The board refreshes on the same cycle as the price board
 > (no extra API calls beyond `MEMBER_BOARD_INTERVAL`, default 300s).
 
 ### Progression & jobs

@@ -804,11 +804,13 @@ async function handleMembers(message) {
     for (const e of entries) {
       const tz = e.timezone ? tzNormalize.normalize(e.timezone).display : null;
       let icon = '\u26AA';
-      if (e.online) icon = '\u{1F7E2}';
-      else if (e.lastAction && (Date.now() / 1000 - e.lastAction) / 3600 < 0.25) icon = '\u{1F535}';
-      else if (e.state === 'Traveling') icon = '\u2708\uFE0F';
+      if (e.state === 'Traveling') icon = '\u2708\uFE0F';
+      else if (e.state === 'Abroad') icon = '\u{1F30D}';
       else if (e.state === 'Hospital') icon = '\u{1F3E5}';
-      else if (e.state === 'Jail') icon = '\u{1F512}';
+      else if (e.state === 'Jail' || e.state === 'Federal' || e.state === 'Evading' || e.state === 'Investigating') icon = '\u{1F512}';
+      else if (e.state === 'Fallen') icon = '\u{1F480}';
+      else if (e.online) icon = '\u{1F7E2}';
+      else if (e.lastAction && (Date.now() / 1000 - e.lastAction) / 3600 < 0.25) icon = '\u{1F535}';
       lines.push(`${icon} **${e.name}** \u2014 ${e.position}, L${e.level}${tz ? `, ${tz}` : ''}`);
     }
     await reply.edit(lines.join('\n'));
@@ -2670,8 +2672,13 @@ function profileUrl(playerId) {
 }
 
 function memberStatusIcon(member) {
+  const state = member.status ? member.status.state : null;
+  if (state === 'Traveling') return '\u2708\uFE0F';
+  if (state === 'Abroad') return '\u{1F30D}';
+  if (state === 'Hospital') return '\u{1F3E5}';
+  if (state === 'Jail' || state === 'Federal' || state === 'Evading' || state === 'Investigating') return '\u{1F512}';
+  if (state === 'Fallen') return '\u{1F480}';
   if (member.last_action && member.last_action.status === 'Online') return '\u{1F7E2}';
-  if (member.status && member.status.state === 'Traveling') return '\u2708\uFE0F';
   const ts = member.last_action && member.last_action.timestamp;
   if (ts) {
     const hours = (Date.now() / 1000 - ts) / 3600;
@@ -2731,7 +2738,7 @@ async function updateMembersBoardInChannel(channelId) {
       lines.push(`${r.icon} [**${r.name}**](${profileUrl(r.playerId)}) \u2014 ${r.position}, L${r.level}${tz ? ` \u00B7 ${tz}` : ''}`);
     }
     const title = `\u{1F465} ${d.name || 'Faction'} Members \u2014 ${rows.length}`;
-    const footer = '\u{1F7E2} online \u00B7 \u{1F535} idle <15m \u00B7 \u2708 traveling \u00B7 \u26AA offline <2d \u00B7 \u{1F7E1} 2\u20136d \u00B7 \u{1F534} 7d+';
+    const footer = '\u{1F7E2} online \u00B7 \u{1F535} idle <15m \u00B7 \u26AA offline <2d \u00B7 \u{1F7E1} 2\u20136d \u00B7 \u{1F534} 7d+\n\u2708\uFE0F traveling \u00B7 \u{1F30D} abroad \u00B7 \u{1F3E5} hospital \u00B7 \u{1F512} jail \u00B7 \u{1F480} fallen';
 
     const chunks = [];
     let cur = [];
