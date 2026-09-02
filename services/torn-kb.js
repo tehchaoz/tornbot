@@ -5,7 +5,7 @@ const Database = require('better-sqlite3');
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
 const EMBED_MODEL = process.env.KB_EMBED_MODEL || 'nomic-embed-text';
-const KB_DIR = process.env.KB_DIR || path.join(process.env.HOME || '/home/morefine', 'MoreFineVault', 'wiki', 'knowledge', 'torn-city');
+const KB_DIR = process.env.KB_DIR || path.join(process.env.HOME || process.env.USERPROFILE || '', 'tornbot-kb');
 const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'tornbot.db');
 const MAX_CHARS = 1800;
 const TOP_K = 3;
