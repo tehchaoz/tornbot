@@ -1,0 +1,9 @@
+node_modules/
+.env
+*.db
+prices.json
+*.backup.*
+dmtest.js
+resetboard.js
+# Keep the .env.example template tracked
+!.env.example

@@ -1,0 +1,15 @@
+[Unit]
+Description=Discord bot (discord.js + Ollama)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/discord-bot
+ExecStart=/usr/bin/node /opt/discord-bot/bot.js
+Restart=always
+RestartSec=5
+EnvironmentFile=/opt/discord-bot/.env
+
+[Install]
+WantedBy=multi-user.target
