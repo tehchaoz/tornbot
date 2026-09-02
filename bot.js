@@ -2312,22 +2312,52 @@ async function ensureDefaultWatchlist() {
   }
 }
 
+// Price-board API keys: every active per-user account key, plus the env keys as
+// fallback, deduped. The watchlist is spread across these keys so each key only
+// pings its own slice once per cycle — no single key trips Torn's rate limit.
+let boardKeys = [];
+
+function buildBoardKeys() {
+  const seen = new Set();
+  const pool = [];
+  for (const acct of accountStore.getAllAccounts()) {
+    if (acct.status !== 'active') continue;
+    let key = null;
+    try { key = accountStore.getApiKey(acct.discord_user_id); } catch (e) {}
+    if (key && typeof key === 'string' && key.length > 10 && !seen.has(key)) {
+      seen.add(key);
+      pool.push(key);
+    }
+  }
+  for (const k of [TORN_API_KEY, TORN_API_KEY_2]) {
+    if (k && typeof k === 'string' && k.length > 10 && !seen.has(k)) {
+      seen.add(k);
+      pool.push(k);
+    }
+  }
+  return pool;
+}
+
 async function startPriceWatcher() {
   loadPrices();
   await ensureDefaultWatchlist();
-  console.log(`[discord-bot] price watcher started (${priceData.watchlist.length} items, dual-key 40s/20s offset)`);
-  pollPrices(0, 0);
-  setTimeout(() => pollPrices(1, 1), 20000);
-  setInterval(() => pollPrices(0, 0), 40000);
-  setInterval(() => pollPrices(1, 1), 40000);
+  boardKeys = buildBoardKeys();
+  const n = boardKeys.length || 1;
+  const cycleMs = 40000;
+  const offsetMs = Math.round(cycleMs / n);
+  console.log(`[discord-bot] price watcher started (${priceData.watchlist.length} items, ${n} key(s), ${cycleMs / 1000}s cycle, ${offsetMs}ms offset)`);
+  boardKeys.forEach((key, i) => {
+    setTimeout(() => pollPrices(i, key), i * offsetMs);
+    setInterval(() => pollPrices(i, key), cycleMs);
+  });
   pollInactive();
   setInterval(pollInactive, 300000);
 }
 
-function priceGroup(id) {
+function priceGroup(id, mod = 2) {
   let s = 0;
   for (const ch of String(id)) s += ch.charCodeAt(0);
-  return s % 2 === 1 ? 1 : 0;
+  return s % mod;
 }
 
 async function handleAlert(message, rest) {
@@ -2581,11 +2611,12 @@ function listingsSig(im, listings) {
   return `${avg}|` + listings.map((l) => `${l.price}:${l.amount}`).sort().join(',');
 }
 
-async function pollPrices(groupIdx = 0, keyIndex = 0) {
-  const nowActive = [...priceData.watchlist].filter((id) => priceGroup(id) === groupIdx);
+async function pollPrices(groupIdx = 0, key = TORN_API_KEY) {
+  const n = boardKeys.length || 1;
+  const nowActive = [...priceData.watchlist].filter((id) => priceGroup(id, n) === groupIdx);
   await Promise.allSettled(nowActive.map(async (id) => {
     try {
-      const d = await tornGet('market', id, 'itemmarket', 2, keyIndex);
+      const d = await tornGet('market', id, 'itemmarket', 2, key);
       const im = d.itemmarket || {};
       const listings = (im.listings || []).map((l) => ({ price: Number(l.price) || 0, amount: Number(l.amount) || 0 })).filter((l) => l.price > 0);
       const rec = priceData.items[id];
@@ -2613,6 +2644,20 @@ async function pollPrices(groupIdx = 0, keyIndex = 0) {
     }
   }));
   savePrices();
+  await maybeRefreshBoardAndAlerts();
+}
+
+// The Discord board + alert DM scan don't need to run once per key — that would
+// spam edits every few seconds. Throttle them to a single cadence per cycle.
+let lastBoardRefresh = 0;
+function boardRefreshMs() {
+  const v = parseInt(process.env.PRICE_BOARD_INTERVAL, 10);
+  return Number.isFinite(v) && v > 0 ? v * 1000 : 40000;
+}
+async function maybeRefreshBoardAndAlerts() {
+  const now = Date.now();
+  if (now - lastBoardRefresh < boardRefreshMs()) return;
+  lastBoardRefresh = now;
   await updatePriceBoard();
   await updateMembersBoard();
   await scanAndAlert();
