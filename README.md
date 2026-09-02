@@ -53,6 +53,8 @@ Key variables:
 | `BOARD_CHANNEL_IDS` | Channel(s) for the price board, comma-separated |
 | `CHAIN_CHANNEL_ID` | Channel for chain-monitoring alerts |
 | `MEMBER_INTRO_CHANNEL_ID` | `#member-intro` channel — the bot reads the timezone roster posted there and shows it in `!members` |
+| `MEMBER_BOARD_CHANNEL_ID` | Channel for the pinned auto-updating `!members` board (defaults to `MEMBER_INTRO_CHANNEL_ID`) |
+| `MEMBER_BOARD_INTERVAL` | Seconds between members-board refreshes (default 300; piggybacks the price cycle) |
 | `PREFIX` | Command prefix (default `!`) |
 | `TORN_ENCRYPTION_KEY` | 64-char hex key used to encrypt stored member data — set your own |
 | `GUILD_ID` | Your Discord server ID (restricts rate-limited commands to one server) |
@@ -121,7 +123,7 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 | Command | What it does |
 |---|---|
 | `!faction [id]` | Faction info |
-| `!members` | Member status board (shows timezone where known) |
+| `!members` | Member status board (timezone + online status; also pinned as an auto-updating board) |
 | `!tz <timezone>` | Set / update your timezone for `!members` |
 | `!roster [name]` | Member list with level / location / last-active / days |
 | `!activity [name]` | Faction member last-active tracking |
@@ -139,7 +141,14 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 > places (highest priority first): an account's stored timezone (`!tz` / `!torn setup`), a matched entry in
 > the `#member-intro` roster (parsed automatically — `MEMBER_INTRO_CHANNEL_ID`), or not at all. Torn's API
 > does not expose member timezones, so the roster and `!tz` are the sources. Format lines in
-> `#member-intro` like `Name, Location, UTC-5` or `DiscordName: TornName, Location, UTC+1`.
+> `#member-intro` like `Name, Location, UTC-5` or `DiscordName: TornName, Location, UTC+1`. Free-form
+> inputs are normalized to `UTC±N (zone)` (e.g. "Eastern US" → `UTC-5/-4 (ET)`, "Sydney" → `UTC+10/+11 (AET)`).
+>
+> **Pinned members board:** `!members` is also posted as a pinned, auto-refreshing board in
+> `MEMBER_BOARD_CHANNEL_ID` (defaults to the `#member-intro` channel). Each entry links to the member's
+> Torn profile and shows an activity status icon: 🟢 online · ✈️ traveling · ⚪ offline <2 days ·
+> 🟡 offline 2–6 days · 🔴 offline 7+ days. The board refreshes on the same cycle as the price board
+> (no extra API calls beyond `MEMBER_BOARD_INTERVAL`, default 300s).
 
 ### Progression & jobs
 | Command | What it does |

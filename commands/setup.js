@@ -1,6 +1,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { tornGet } = require('../services/torn-api');
 const accountStore = require('../services/account-store');
+const tzNormalize = require('../services/tz-normalize');
 
 const PENDING_SETUP = new Map();
 
@@ -69,12 +70,12 @@ async function handleDM(message) {
       return true;
     }
     try {
-      accountStore.setTimezone(userId, tzValue);
+      accountStore.setTimezone(userId, tzNormalize.normalize(tzValue).display);
     } catch (e) {
       console.error(`[torn-setup] failed to store timezone for ${userId}:`, e.message);
     }
     PENDING_SETUP.delete(userId);
-    await message.reply(`Timezone set: **${tzValue}** \u2014 it will now show in \`!members\`. If that\u2019s wrong, update it with \`!tz <timezone>\`.`);
+    await message.reply(`Timezone set: **${tzNormalize.normalize(tzValue).display}** \u2014 it will now show in \`!members\`. If that\u2019s wrong, update it with \`!tz <timezone>\`.`);
     return true;
   }
 

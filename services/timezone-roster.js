@@ -3,7 +3,7 @@ const path = require('path');
 
 const ROSTER_FILE = process.env.MEMBER_TIMEZONES_FILE || path.join(__dirname, '..', 'member-timezones.json');
 
-let roster = { byTorn: {}, byDiscord: {} };
+let roster = { byTorn: {}, byDiscord: {}, boardMsgId: null };
 let lastError = null;
 
 const TZ_TOKEN = /UT[CS]?\s*[±+\-−]?\s*\d{1,2}(?::\d{2})?|\b(?:GMT|ECT|EET|EEST|CET|CEST|WET|WEST|EST|EDT|AST|ADT|CST|CDT|MST|MDT|PST|PDT|AKST|AKDT|HST|JST|AEST|AEDT|ACST|ACDT|AWST|IST|SGT)\b/ig;
@@ -70,6 +70,7 @@ function loadFromFile() {
       const data = JSON.parse(fs.readFileSync(ROSTER_FILE, 'utf8'));
       roster.byTorn = data.byTorn || {};
       roster.byDiscord = data.byDiscord || {};
+      roster.boardMsgId = data.boardMsgId || null;
     }
   } catch (e) {
     lastError = e.message;
@@ -78,10 +79,23 @@ function loadFromFile() {
 
 function saveToFile() {
   try {
-    fs.writeFileSync(ROSTER_FILE, JSON.stringify({ byTorn: roster.byTorn, byDiscord: roster.byDiscord }));
+    fs.writeFileSync(ROSTER_FILE, JSON.stringify({
+      byTorn: roster.byTorn,
+      byDiscord: roster.byDiscord,
+      boardMsgId: roster.boardMsgId || null,
+    }));
   } catch (e) {
     lastError = e.message;
   }
+}
+
+function getBoardMsgId() {
+  return roster.boardMsgId || null;
+}
+
+function setBoardMsgId(id) {
+  roster.boardMsgId = id || null;
+  saveToFile();
 }
 
 async function refresh(client) {
@@ -134,5 +148,7 @@ module.exports = {
   parseRosterMessage,
   timezoneForTornName,
   timezoneForDiscord,
+  getBoardMsgId,
+  setBoardMsgId,
   getLastError,
 };

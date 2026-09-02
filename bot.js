@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 const fs = require('fs');
 const accountStore = require('./services/account-store');
 const timezoneRoster = require('./services/timezone-roster');
+const tzNormalize = require('./services/tz-normalize');
 const tornApi = require('./services/torn-api');
 const setupCommands = require('./commands/setup');
 const personalCommands = require('./commands/personal');
@@ -358,6 +359,11 @@ client.once(Events.ClientReady, (c) => {
       console.log(`[discord-bot] member-timezone roster: ${r.synced ? `synced ${r.count} entries` : `not synced (${r.reason})`}`);
     } catch (e) {
       console.error('[discord-bot] roster refresh failed:', e.message);
+    }
+    try {
+      await updateMembersBoard();
+    } catch (e) {
+      console.error('[discord-bot] members board init failed:', e.message);
     }
   })();
   loadLinks();
@@ -782,6 +788,7 @@ async function handleMembers(message) {
       position: m.position,
       online: m.last_action && m.last_action.status === 'Online',
       state: m.status ? m.status.state : null,
+      lastAction: m.last_action ? m.last_action.timestamp : null,
       timezone: tzLookup[String(m.name).trim().toLowerCase()] || timezoneRoster.timezoneForTornName(m.name),
     }));
     entries.sort((a, b) => {
@@ -790,12 +797,13 @@ async function handleMembers(message) {
     });
     const lines = [`\u{1F465} **${d.name || 'Faction'}** \u2014 ${entries.length} member${entries.length === 1 ? '' : 's'}`];
     for (const e of entries) {
+      const tz = e.timezone ? tzNormalize.normalize(e.timezone).display : null;
       let icon = '\u26AA';
       if (e.online) icon = '\u{1F7E2}';
-      else if (e.state === 'Hospital') icon = '\u{1F3E5}';
       else if (e.state === 'Traveling') icon = '\u2708\uFE0F';
+      else if (e.state === 'Hospital') icon = '\u{1F3E5}';
       else if (e.state === 'Jail') icon = '\u{1F512}';
-      lines.push(`${icon} **${e.name}** \u2014 ${e.position}, L${e.level}${e.timezone ? `, ${e.timezone}` : ''}`);
+      lines.push(`${icon} **${e.name}** \u2014 ${e.position}, L${e.level}${tz ? `, ${tz}` : ''}`);
     }
     await reply.edit(lines.join('\n'));
   } catch (e) {
@@ -817,8 +825,9 @@ async function handleTimezone(message, query) {
       : 'No timezone set yet. Use `!tz <timezone>` (e.g. `!tz Eastern US`, `!tz UTC+1`, `!tz Australia`).');
     return;
   }
-  accountStore.setTimezone(userId, arg);
-  await message.reply(`Timezone set: **${arg}** \u2014 it will now show in \`!members\`.`);
+  const normalized = tzNormalize.normalize(arg).display;
+  accountStore.setTimezone(userId, normalized);
+  await message.reply(`Timezone set: **${normalized}** \u2014 it will now show in \`!members\`.`);
 }
 
 async function handleTerritory(message) {
@@ -2494,6 +2503,7 @@ async function pollPrices(groupIdx = 0, keyIndex = 0) {
   }));
   savePrices();
   await updatePriceBoard();
+  await updateMembersBoard();
   await scanAndAlert();
 }
 
@@ -2646,6 +2656,114 @@ async function updateBoardInChannel(channelId) {
     }
   } catch (e) {
     console.error('[discord-bot] board update failed for', channelId, ':', e.message, e.rawError ? JSON.stringify(e.rawError).slice(0, 300) : '');
+  }
+}
+
+function profileUrl(playerId) {
+  return `https://www.torn.com/profiles.php?XID=${encodeURIComponent(playerId)}`;
+}
+
+function memberStatusIcon(member) {
+  if (member.last_action && member.last_action.status === 'Online') return '\u{1F7E2}';
+  if (member.status && member.status.state === 'Traveling') return '\u2708\uFE0F';
+  const ts = member.last_action && member.last_action.timestamp;
+  if (ts) {
+    const hours = (Date.now() / 1000 - ts) / 3600;
+    if (hours < 48) return '\u26AA';
+    if (hours < 168) return '\u{1F7E1}';
+    return '\u{1F534}';
+  }
+  return '\u{1F534}';
+}
+
+let lastMembersBoardRun = 0;
+function membersBoardThrottleSeconds() {
+  const v = parseInt(process.env.MEMBER_BOARD_INTERVAL, 10);
+  return Number.isFinite(v) && v > 0 ? v : 300;
+}
+
+async function updateMembersBoard() {
+  const channelId = process.env.MEMBER_BOARD_CHANNEL_ID || process.env.MEMBER_INTRO_CHANNEL_ID;
+  if (!channelId) return;
+  const now = Date.now();
+  if (now - lastMembersBoardRun < membersBoardThrottleSeconds() * 1000) return;
+  lastMembersBoardRun = now;
+  await updateMembersBoardInChannel(channelId);
+}
+
+async function updateMembersBoardInChannel(channelId) {
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel || !channel.messages) return;
+    const d = await tornGet('faction', FACTION_ID, 'basic');
+    if (!d || !d.members) return;
+
+    const tzLookup = {};
+    for (const acct of accountStore.getAllAccounts()) {
+      if (acct.torn_username) tzLookup[acct.torn_username.trim().toLowerCase()] = acct.timezone || null;
+    }
+
+    const rows = Object.entries(d.members || {}).map(([playerId, m]) => ({
+      playerId,
+      name: m.name,
+      level: m.level,
+      position: m.position,
+      icon: memberStatusIcon(m),
+      lastTs: m.last_action ? m.last_action.timestamp : 0,
+      tz: tzLookup[String(m.name).trim().toLowerCase()] || timezoneRoster.timezoneForTornName(m.name),
+    }));
+    rows.sort((a, b) => {
+      if (a.lastTs !== b.lastTs) return b.lastTs - a.lastTs;
+      if (a.icon !== b.icon) return (a.icon === '\u{1F7E2}' || a.icon === '\u2708\uFE0F') ? -1 : 1;
+      return (b.level || 0) - (a.level || 0);
+    });
+
+    const lines = [];
+    for (const r of rows) {
+      const tz = r.tz ? tzNormalize.normalize(r.tz).display : null;
+      lines.push(`${r.icon} [**${r.name}**](${profileUrl(r.playerId)}) \u2014 ${r.position}, L${r.level}${tz ? ` \u00B7 ${tz}` : ''}`);
+    }
+    const title = `\u{1F465} ${d.name || 'Faction'} Members \u2014 ${rows.length}`;
+    const footer = '\u{1F7E2} online \u00B7 \u2708 traveling \u00B7 \u26AA offline <2d \u00B7 \u{1F7E1} 2\u20136d \u00B7 \u{1F534} 7d+';
+
+    const chunks = [];
+    let cur = [];
+    let len = 0;
+    for (const line of lines) {
+      if (len + line.length > 3900 && cur.length) {
+        chunks.push(cur.join('\n'));
+        cur = [];
+        len = 0;
+      }
+      cur.push(line);
+      len += line.length + 1;
+    }
+    if (cur.length) chunks.push(cur.join('\n'));
+
+    if (!lines.length) lines.push('No members found.');
+    const embeds = chunks.length ? chunks : [''];
+    const embedsOut = embeds.map((desc, i) => ({
+      title: embeds.length === 1 ? title : `${title} (${i + 1}/${embeds.length})`,
+      description: desc,
+      color: 0x5865f2,
+      footer: { text: footer },
+    }));
+
+    let msgId = timezoneRoster.getBoardMsgId();
+    let msg = null;
+    if (msgId) {
+      try { msg = await channel.messages.fetch(msgId); } catch (e) { msg = null; }
+    }
+    if (msg) {
+      await msg.edit({ content: '', embeds: embedsOut });
+      if (!msg.pinned) { try { await msg.pin(); } catch (e) {} }
+    } else {
+      msg = await channel.send({ embeds: embedsOut });
+      timezoneRoster.setBoardMsgId(msg.id);
+      try { await msg.pin(); } catch (e) { console.error('[discord-bot] member board pin failed:', e.message); }
+    }
+  } catch (e) {
+    console.error('[discord-bot] members board update failed:', e.message);
   }
 }
 
