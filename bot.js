@@ -21,6 +21,7 @@ const personalStatsCommands = require('./commands/personal-stats');
 const eventsInfoCommands = require('./commands/events-info');
 const knownCommands = require('./commands/known');
 const ttsCommands = require('./commands/tts');
+const imageCommands = require('./commands/image');
 const knownPlayers = require('./services/known-players');
 const { wrapMessage, dmChunks, chunkText } = require('./services/reply');
 const { createFactionFeatures } = require('./commands/faction-features');
@@ -158,7 +159,7 @@ const INTERVIEW = {
 const TORN_GUILD_ID = process.env.GUILD_ID || '';
 
 
-const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz'];
+const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image'];
 
 const TORN_HELP =
   '**Torn**\n' +
@@ -218,6 +219,7 @@ const TORN_HELP =
   '`!travel [country]` — abroad shop stock\n' +
   '`!tts <text>` / `!tts voice <name>` — text-to-speech (Pocket TTS)\n' +
   '`!say <text>` — speak out loud in your voice channel\n' +
+  '`!image <prompt>` — generate a 1024x1024 photo on the local GPU (Z-Image Turbo)\n' +
   '`!verify` — verify your Torn account is a faction member\n' +
   '`!wars` — faction wars (ranked/raids/territory)\n' +
   '`!watch <item>` / `!unwatch <item>` — track prices\n' +
@@ -657,6 +659,9 @@ async function handleCommand(message) {
       break;
     case 'say':
       await ttsCommands.handleSay(message, args);
+      break;
+    case 'image':
+      await imageCommands.handleImage(message, args);
       break;
   }
 }

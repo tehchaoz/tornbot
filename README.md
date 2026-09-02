@@ -21,6 +21,7 @@ Fork this repo and point it at your own bot and Torn API key.
 Optional:
 - A local [Ollama](https://ollama.com) server for the AI coach (`!coach`) and knowledge base
 - A [Pocket TTS](https://github.com/Otto-7/pockettts) service for `!tts` / `!say`
+- A local [Z-Image Turbo](https://github.com/ggml-org/stable-diffusion.cpp) GPU service (sd.cpp) for `!image`
 
 ## 1. Create the Discord bot
 
@@ -177,6 +178,7 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 | `!teams @a @b ...` | Random team splitter (mentions 2+ players) |
 | `!tts <text>` / `!tts voice <name>` | Text-to-speech (Pocket TTS) |
 | `!say <text>` | Speak out loud in your voice channel |
+| `!image <prompt>` | Generate a 1024x1024 photo on the local GPU (Z-Image Turbo) |
 | `!ping` | Latency |
 
 ## Project layout
