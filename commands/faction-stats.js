@@ -57,10 +57,24 @@ async function handleFinances(message) {
   lines.push(`Money: ${fmtMoney(faction.money)}`);
   lines.push(`Points: ${Number(faction.points || 0).toLocaleString('en-US')}`);
 
+  // Only the requesting player's own balance, not the whole member list.
   const members = Array.isArray(bal.members) ? bal.members : [];
-  members.slice().sort((a, b) => (b.money || 0) - (a.money || 0)).forEach((m) => {
-    lines.push(`• **${m.username || m.name || '?'}** — ${fmtMoney(m.money)}`);
-  });
+  const account = accountStore.getAccount(message.author.id);
+  let own = null;
+  if (account) {
+    const pid = String(account.tornPlayerId || '').trim();
+    const uname = (account.tornUsername || '').trim().toLowerCase();
+    own = members.find((m) => {
+      if (pid && String(m.id) === pid) return true;
+      if (uname && String(m.username || '').trim().toLowerCase() === uname) return true;
+      return false;
+    });
+  }
+  if (own) {
+    lines.push(`Your balance: ${fmtMoney(own.money)}${own.points != null ? ` · ${Number(own.points).toLocaleString('en-US')} points` : ''}`);
+  } else {
+    lines.push('Couldn\u2019t match your Discord account to a faction member. Run `!torn setup` to link your Torn account.');
+  }
 
   await message.reply(lines.join('\n'));
 }
