@@ -93,6 +93,7 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 | `!bars` | Your energy / nerve / happy |
 | `!gain` | Energy / nerve refill planner |
 | `!gain on\|off` | DM you when energy/nerve fills, your education course completes, or your bank investment matures |
+| `!pray on\|off` | Daily church prayer reminder (DM at a set hour; `!pray time <HH>` to change it) |
 | `!timers` | View all active timers now (bars, cooldowns, course, bank investment) |
 | `!levelpacer` | Time to next level |
 | `!networth` | Networth breakdown |

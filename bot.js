@@ -159,7 +159,7 @@ const INTERVIEW = {
 const TORN_GUILD_ID = process.env.GUILD_ID || '';
 
 
-const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image'];
+const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image', 'pray'];
 
 const TORN_HELP =
   '**Torn**\n' +
@@ -220,6 +220,7 @@ const TORN_HELP =
   '`!tts <text>` / `!tts voice <name>` — text-to-speech (Pocket TTS)\n' +
   '`!say <text>` — speak out loud in your voice channel\n' +
   '`!image <prompt>` — generate a 1024x1024 photo on the local GPU (Z-Image Turbo)\n' +
+  '`!pray on` — daily church prayer reminder (DM at a set hour)\n' +
   '`!verify` — verify your Torn account is a faction member\n' +
   '`!wars` — faction wars (ranked/raids/territory)\n' +
   '`!watch <item>` / `!unwatch <item>` — track prices\n' +
@@ -388,6 +389,7 @@ client.once(Events.ClientReady, (c) => {
   happyjumpCommands.startHappyJumpMonitor(client);
   meritsCommands.startMeritsMonitor(client);
   startGainMonitor(client);
+  startPrayMonitor(client);
   ttsCommands.initVoice(client);
   knownPlayers.load();
   knownPlayers.syncAll()
@@ -662,6 +664,9 @@ async function handleCommand(message) {
       break;
     case 'image':
       await imageCommands.handleImage(message, args);
+      break;
+    case 'pray':
+      await handlePray(message, args);
       break;
   }
 }
@@ -1662,6 +1667,104 @@ async function handleGain(message, args) {
   } catch (e) {
     await reply.edit(`Torn error: ${e.message}`);
   }
+}
+
+// ---- Daily church prayer reminder ----
+
+const PRAY_WATCH_FILE = '/opt/discord-bot/pray-watch.json';
+const PRAY_HOUR = Number(process.env.PRAY_HOUR) || 12;
+let prayWatch = {};
+let prayClient = null;
+
+function loadPrayWatch() {
+  try { if (fs.existsSync(PRAY_WATCH_FILE)) prayWatch = JSON.parse(fs.readFileSync(PRAY_WATCH_FILE, 'utf8')); } catch (e) { prayWatch = {}; }
+  if (!prayWatch || typeof prayWatch !== 'object') prayWatch = {};
+}
+function savePrayWatch() {
+  try { fs.writeFileSync(PRAY_WATCH_FILE, JSON.stringify(prayWatch)); } catch (e) {}
+}
+
+function localDayKey() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function startPrayMonitor(client) {
+  prayClient = client;
+  loadPrayWatch();
+  console.log(`[discord-bot] pray reminders enabled (${Object.keys(prayWatch).length} subscriber(s), daily ${PRAY_HOUR}:00 local)`);
+  setInterval(pollPrayWatch, 60000);
+}
+
+async function pollPrayWatch() {
+  if (!prayClient) return;
+  const uids = Object.keys(prayWatch);
+  if (!uids.length) return;
+  const now = new Date();
+  const today = localDayKey();
+  const hour = now.getHours();
+  for (const uid of uids) {
+    const sub = prayWatch[uid];
+    if (!sub) continue;
+    const hh = Number(sub.hour);
+    if (!Number.isFinite(hh)) continue;
+    if (sub.lastSentDay === today) continue;
+    if (hour !== hh) continue;
+    if (now.getMinutes() > 1) continue;
+    sub.lastSentDay = today;
+    savePrayWatch();
+    try {
+      const user = await prayClient.users.fetch(uid);
+      if (user) await user.send('\u{1F6CE}\uFE0F  **Daily prayer reminder**\nIt\u2019s time to go pray at the church (/church.php) to keep your streak going toward the merit. Pray twice a day with at least an 8-hour gap if you can.');
+    } catch (e) {
+      console.error(`[pray] DM failed for ${uid}:`, e.message);
+    }
+  }
+}
+
+async function handlePray(message, args) {
+  const userId = message.author.id;
+  const cmd = (args[0] || '').toLowerCase();
+
+  if (cmd === 'on' || cmd === 'watch') {
+    loadPrayWatch();
+    const cur = prayWatch[userId] || {};
+    prayWatch[userId] = { hour: Number(cur.hour) || PRAY_HOUR, lastSentDay: cur.lastSentDay || localDayKey() };
+    savePrayWatch();
+    await message.reply(`\u{1F6CE}\uFE0F **Pray reminder ON** \u2014 I\u2019ll DM you daily at **${prayWatch[userId].hour}:00** (local) to pray at the church. \`!pray off\` to stop, \`!pray time <HH>\` to change the hour.`);
+    return;
+  }
+  if (cmd === 'off' || cmd === 'unwatch') {
+    loadPrayWatch();
+    if (prayWatch[userId]) { delete prayWatch[userId]; savePrayWatch(); }
+    await message.reply('Pray reminder OFF.');
+    return;
+  }
+  if (cmd === 'time') {
+    const h = parseInt((args[1] || '').replace(/\D/g, ''), 10);
+    if (!Number.isInteger(h) || h < 0 || h > 23) {
+      await message.reply('Usage: `!pray time <hour>` where hour is 0\u201323 (24h, local time).');
+      return;
+    }
+    loadPrayWatch();
+    const cur = prayWatch[userId] || { hour: PRAY_HOUR, lastSentDay: localDayKey() };
+    prayWatch[userId] = { hour: h, lastSentDay: cur.lastSentDay || localDayKey() };
+    savePrayWatch();
+    await message.reply(`\u23F0 Pray reminder set to **${h}:00** local.`);
+    return;
+  }
+  if (cmd === 'status') {
+    loadPrayWatch();
+    if (!prayWatch[userId]) {
+      await message.reply('Pray reminder is **OFF**. Use `!pray on` to start.');
+      return;
+    }
+    await message.reply(`Pray reminder is **ON** \u2014 daily at **${prayWatch[userId].hour}:00** local. \`!pray off\` to stop, \`!pray time <HH>\` to change the hour.`);
+    return;
+  }
+
+  await message.reply('**!pray**\n`!pray on` \u2014 daily church prayer reminder\n`!pray off` \u2014 stop it\n`!pray time <HH>` \u2014 set reminder hour (0\u201323, local)\n`!pray status` \u2014 show state');
 }
 
 async function handleTimers(message) {
