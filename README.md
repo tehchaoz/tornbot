@@ -1,12 +1,15 @@
 # Tornbot
 
-A self-hosted Discord bot for [Torn](https://www.torn.com) city management. Built with
-**Node.js** and **discord.js** (v14). Features a live item price board, faction
-monitoring (chains, wars, bank, armory), personal stats, happy-jump alerts, a
-targeting/attacks tool, an optional local-LLM personal coach, and TTS.
+A self-hosted Discord bot for [Torn City](https://www.torn.com). Built with
+**Node.js** and **discord.js** (v14).
 
-All configuration is environment-driven (`.env`) — no API keys are stored in code.
-Fork this repo and configure it for your own faction and Discord server.
+It keeps a live item price board in your server, watches markets and fires DM
+alerts, tracks your faction (chains, wars, bank, armory, territory, activity),
+helps you plan gains and happy jumps, finds easy targets, and even runs a
+personal coach using a local LLM (Ollama) plus text-to-speech.
+
+Everything is configured through `.env` — **no API keys are stored in code**.
+Fork this repo and point it at your own bot and Torn API key.
 
 ## Requirements
 
@@ -15,7 +18,7 @@ Fork this repo and configure it for your own faction and Discord server.
 - A Torn API key (Full Access for most features)
 - npm
 
-Optional extras:
+Optional:
 - A local [Ollama](https://ollama.com) server for the AI coach (`!coach`) and knowledge base
 - A [Pocket TTS](https://github.com/Otto-7/pockettts) service for `!tts` / `!say`
 
@@ -23,15 +26,15 @@ Optional extras:
 
 1. Go to https://discord.com/developers/applications → **New Application**.
 2. **Bot** → **Reset Token** and copy the token.
-3. Enable the **Message Content intent** (Server Members intent optional).
-4. Invite the bot to your server with the **Manage Messages**, **Send Messages**,
-   **Embed Links**, **Read Message History**, and **Connect**/**Speak** (for TTS) permissions.
+3. Enable the **Message Content** intent (Server Members intent optional).
+4. Invite the bot to your server with: **Manage Messages**, **Send Messages**,
+   **Embed Links**, **Read Message History**, and **Connect**/**Speak** (for `!tts`/`!say`).
 
 ## 2. Get a Torn API key
 
-1. Log into your Torn account → Preferences → API and create a key.
-2. For full faction features, use a key owned by someone with **Full Access**
-   (ideally from your faction's leader or a Full Access member).
+Log into your Torn account → Preferences → API → create a key. For the full
+faction feature set, use a key with **Full Access** (ideally held by your
+faction's leader or a Full Access member).
 
 ## 3. Configure
 
@@ -62,7 +65,7 @@ npm start
 
 ### Run as a systemd service (Linux)
 
-Edit `discord-bot.service` to point at your install path, then:
+Edit `discord-bot.service` to match your install path, then:
 
 ```bash
 sudo cp discord-bot.service /etc/systemd/system/
@@ -72,15 +75,90 @@ sudo systemctl enable --now discord-bot
 
 ## Commands
 
-Type `!help` in a channel the bot can see for a full list. Highlights:
+Type `!help` in any channel the bot can see for the full list. The main commands:
 
-- `!board` / price-board refresh · `!flips` · `!arbitrage` · `!junk`
-- `!baldr` (full faction member list) · `!roster` · `!target` (attack targeting)
-- `!finances` · `!chainreport` · `!armory` · `!wars`
-- `!merits` · `!perks` · `!courses` · `!networth` · `!medals`
-- `!happy` / happy-jump alerts · `!notify`
-- `!tts <text>` / `!say <text>` (if a TTS service is configured)
-- `!coach` (if Ollama is configured)
+### Accounts & personal
+| Command | What it does |
+|---|---|
+| `!torn setup` | Link your Torn account to the bot (DM-guided) |
+| `!torn status` | Show your linked Torn account |
+| `!torn disconnect` | Unlink your Torn account |
+| `!link <torn-id>` | Link your Torn account |
+| `!torn [id]` | Player profile |
+| `!verify` | Verify your Torn account is a faction member |
+| `!bars` | Your energy / nerve / happy |
+| `!gain` | Energy / nerve refill planner |
+| `!levelpacer` | Time to next level |
+| `!networth` | Networth breakdown |
+| `!events` | Your recent in-game events + notifications |
+| `!guide` | Your personalized next steps |
+| `!guide on\|off` | Daily guide DM (10:00 local, same message updated) |
+
+### Markets & economy
+| Command | What it does |
+|---|---|
+| `!item <name\|id>` | Market prices |
+| `!prices <item> [...]` | Scan multiple items |
+| `!ph <item>` | Price history |
+| `!watch <item>` / `!unwatch <item>` | Track prices |
+| `!watchlist` | List tracked items |
+| `!alert on\|off` | DM when a watched item hits a buy/sell signal |
+| `!flips` | Buy-low / sell-high |
+| `!arbitrage` | Bazaar → item-market flip opportunities |
+| `!flipcalc <item> <qty> <buy> [sell]` | Profit calculator |
+| `!junk` | List trash/vendor items (Other, Collectible, Unused) |
+| `!stock <item>` | Torn City shop stock |
+| `!travel [country]` | Abroad shop stock |
+| `!abroad <item>` | Which countries have an item |
+| `!points` | Points market prices |
+| `!auctions <item>` | Auction house listings |
+| `!museum` | Museum sets + point payouts |
+
+### Faction & members
+| Command | What it does |
+|---|---|
+| `!faction [id]` | Faction info |
+| `!members` | Member status board |
+| `!roster [name]` | Member list with level / location / last-active / days |
+| `!activity [name]` | Faction member last-active tracking |
+| `!baldr <name>` \| `!baldr list <level>` \| `!baldr scan <id>` | Search Baldr's full levelling list |
+| `!known <name>` / `!known sync` | Everyone the bot has ever seen |
+| `!finances` | Faction bank balance + member balances |
+| `!bank balance` / `!bank req <amount> [reason]` | Faction vault |
+| `!armory` | Faction armory inventory (weapons / armor / drugs) |
+| `!territory` | Faction territory |
+| `!wars` | Faction wars (ranked / raids / territory) |
+| `!chainreport` | Current + recent chain stats |
+| `!notify status` | Show faction alert monitors |
+
+### Progression & jobs
+| Command | What it does |
+|---|---|
+| `!merits` / `!merits next` / `!merits earned` | Honor list + next-easiest to earn |
+| `!perks` / `!perks all` | Faction perk tree (branch, level, respect cost, ability) |
+| `!courses` / `!courses <name>` | Education courses, stats gained + duration |
+| `!jobinfo` | Current job, points, ranks |
+| `!job-apply` | Jobs you qualify for + interview |
+| `!interview <job>` | Job interview answers |
+| `!crime-route` | Best crime for your level / stats |
+| `!levelpacer` | Time to next level |
+
+### Helpers & fun
+| Command | What it does |
+|---|---|
+| `!hj` / `!hj guide` | Happy jump helper (energy, happy, drug/booster cooldowns) |
+| `!target` | Find easy kills (add / skip / scan / lists) |
+| `!medals` / `!medals next` | Medals earned + next |
+| `!calendar` | Upcoming game events |
+| `!dirtybombs` | Recent dirty bomb events |
+| `!bounties` | Bounty board |
+| `!ocs` | Organized crime list + rewards |
+| `!digest` | Force the daily market digest |
+| `!tips` / `!tip <name>` | Rocket League training tips |
+| `!teams @a @b ...` | Random team splitter (mentions 2+ players) |
+| `!tts <text>` / `!tts voice <name>` | Text-to-speech (Pocket TTS) |
+| `!say <text>` | Speak out loud in your voice channel |
+| `!ping` | Latency |
 
 ## Project layout
 
@@ -96,5 +174,5 @@ discord-bot.service     systemd unit example
 
 - Your real API keys live **only** in `.env`, which is gitignored.
 - The bot encrypts stored member/Torn credentials with `TORN_ENCRYPTION_KEY`.
-- If you run this publicly or from a shared machine, keep the `.env` file
-  permissions restricted (`chmod 600 .env`).
+- Keep `.env` permissions restricted on a shared machine (`chmod 600 .env`).
+- GitHub secret scanning + push protection are enabled on this repo.
