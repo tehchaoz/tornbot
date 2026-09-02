@@ -11,6 +11,8 @@ personal coach using a local LLM (Ollama) plus text-to-speech.
 Everything is configured through `.env` — **no API keys are stored in code**.
 Fork this repo and point it at your own bot and Torn API key.
 
+> 💚 Enjoying this? Buy me a byte — [tehchaoz.github.io/tips](https://tehchaoz.github.io/tips/)
+
 ## Requirements
 
 - Node.js **18+** (tested on 20/22)
