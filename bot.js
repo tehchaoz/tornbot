@@ -2671,6 +2671,11 @@ function boardRefreshMs() {
   const v = parseInt(process.env.PRICE_BOARD_INTERVAL, 10);
   return Number.isFinite(v) && v > 0 ? v * 1000 : 10000;
 }
+
+function boardRefreshLabel() {
+  const s = Math.round(boardRefreshMs() / 1000);
+  return s >= 60 && s % 60 === 0 ? `${s / 60}m` : `${s}s`;
+}
 async function maybeRefreshBoardAndAlerts() {
   const now = Date.now();
   if (now - lastBoardRefresh < boardRefreshMs()) return;
@@ -2768,7 +2773,7 @@ function buildBoardEmbed() {
   if (!lines.length) {
     return [{
       title: '\u{1F4CA} Price Board',
-      description: 'No profitable flips right now \u00B7 updates every 40s',
+      description: `No profitable flips right now \u00B7 updates every ${boardRefreshLabel()}`,
       color: 0x5865f2,
     }];
   }
@@ -2793,7 +2798,7 @@ function buildBoardEmbed() {
       : `\u{1F4CA} Price Board (${i + 1}/${chunks.length}) \u2014 ${topBuys.length} buy \u00B7 ${sells.length} sell`,
     description: desc,
     color: 0x5865f2,
-    footer: { text: 'Buy at real low, sell at realistic high (after 5% fee) \u00B7 updates every 40s' },
+    footer: { text: `Buy at real low, sell at realistic high (after 5% fee) \u00B7 updates every ${boardRefreshLabel()}` },
   }));
 }
 
