@@ -14,21 +14,48 @@ Fork this repo and point it at your own bot and Torn API key.
 
 ## Requirements
 
-- Node.js **18+** (tested on 20/22)
-- A Discord bot token
-- A Torn API key (Full Access for most features)
-- npm
+- Node.js **18+** (tested on 20/22) — [nodejs.org](https://nodejs.org)
+- A Torn City account
+- npm (comes with Node.js)
 
 Optional:
 - A local [Ollama](https://ollama.com) server for the AI coach (`!coach`) and knowledge base
+
+## Quick start (one command)
+
+Clone this repo, then run the setup wizard — it does everything for you
+(no prior install needed):
+
+```bash
+node setup.js
+```
+
+The wizard walks you through creating a Discord bot and Torn API key, then
+auto-writes your `.env`, generates a secure encryption key, installs
+dependencies, and prints a ready-to-click invite link. No coding needed.
+
+When it finishes you can start the bot with:
+
+```bash
+npm start
+```
+
+The rest of this README explains each step manually, in case you prefer to
+configure things yourself or want extra control.
 
 ## 1. Create the Discord bot
 
 1. Go to https://discord.com/developers/applications → **New Application**.
 2. **Bot** → **Reset Token** and copy the token.
-3. Enable the **Message Content** intent (Server Members intent optional).
-4. Invite the bot to your server with: **Manage Messages**, **Send Messages**, and
-   **Embed Links**.
+3. Enable the **Message Content** intent (and the **Presence** / **Server
+   Members** intents for member tracking).
+4. Invite the bot to your server with: **Manage Messages**, **Send Messages**,
+   **Embed Links**, and **Read Message History**.
+
+> **Windows users:** on a fresh Node LTS install everything installs as-is.
+> If `npm install` reports a build error for `better-sqlite3`, install
+> [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
+> (Workload: "Desktop development with C++"), then run `npm install` again.
 
 ## 2. Get a Torn API key
 
@@ -60,6 +87,8 @@ Key variables:
 | `PREFIX` | Command prefix (default `!`) |
 | `TORN_ENCRYPTION_KEY` | 64-char hex key used to encrypt stored member data — set your own |
 | `GUILD_ID` | Your Discord server ID (restricts rate-limited commands to one server) |
+| `WELCOME_CHANNEL_ID` | Channel to post new-member welcome messages (the bot DMs newcomers if blank) |
+| `PERMISSIONS_PATH` | Path to the tier-assignment JSON (defaults to `./permissions.json`; edit it or use `!tier`/`!promote`/`!demote` in Discord) |
 
 ## 4. Run
 

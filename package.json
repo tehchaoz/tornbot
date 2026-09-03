@@ -5,10 +5,15 @@
   "type": "commonjs",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node bot.js",
+    "setup": "node setup.js"
   },
   "dependencies": {
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/voice": "^0.19.2",
+    "better-sqlite3": "^13.0.3",
     "discord.js": "^14.16.3",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "libsodium-wrappers": "^0.8.4"
   }
 }
