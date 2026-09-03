@@ -195,4 +195,26 @@ function isPendingSetup(userId) {
   return PENDING_SETUP.has(userId);
 }
 
-module.exports = { handleTornSetup, handleDM, handleTornStatus, handleTornDisconnect, isPendingSetup };
+async function handleTornVerify(message) {
+  const all = accountStore.getAllAccounts();
+  const accounts = all.filter((a) => a.status === 'active');
+
+  if (accounts.length === 0) {
+    await message.reply('No one has run `!torn setup` yet.');
+    return;
+  }
+
+  const lines = accounts.map((a, i) => {
+    const connected = a.created_at ? `<t:${a.created_at}:d>` : '?';
+    return `**${i + 1}.** <@${a.discord_user_id}> \u2014 **${a.torn_username}** (#${a.torn_player_id}) \u00B7 since ${connected}`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setTitle('Torn Setup Accounts')
+    .setDescription(`**${accounts.length}** account(s) configured \`!torn setup\`.\n\n${lines.join('\n')}`)
+    .setColor(0x00ffff);
+
+  await message.reply({ embeds: [embed] });
+}
+
+module.exports = { handleTornSetup, handleDM, handleTornStatus, handleTornDisconnect, handleTornVerify, isPendingSetup };

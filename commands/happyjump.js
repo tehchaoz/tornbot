@@ -14,12 +14,16 @@ let hjSubs = {}; // uid -> { lastPhase, lastDmAt, armed }
 function fmtTime(s) {
   const v = Math.max(0, Math.round(Number(s) || 0));
   if (v <= 0) return 'Ready';
-  const h = Math.floor(v / 3600);
+  const d = Math.floor(v / 86400);
+  const h = Math.floor((v % 86400) / 3600);
   const m = Math.floor((v % 3600) / 60);
   const sec = v % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${sec}s`;
-  return `${sec}s`;
+  const parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  parts.push(`${sec}s`);
+  return `${parts.join(' ')}`;
 }
 
 function loadSubs() {

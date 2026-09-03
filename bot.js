@@ -28,6 +28,8 @@ const { createFactionFeatures } = require('./commands/faction-features');
 
 dotenv.config();
 
+const permissions = require('./services/permissions');
+
 const PREFIX = process.env.PREFIX || '!';
 const TORN_API_KEY = process.env.TORN_API_KEY || '';
 const TORN_API_KEY_2 = process.env.TORN_API_KEY_2 || '';
@@ -47,6 +49,10 @@ const RETALIATION_CHANNEL_ID = process.env.RETALIATION_CHANNEL_ID || WAR_CHANNEL
 const OC_CHANNEL_ID = process.env.OC_CHANNEL_ID || CHAIN_CHANNEL_ID || '';
 const BANK_CHANNEL_ID = process.env.BANK_CHANNEL_ID || CHAIN_CHANNEL_ID || '';
 const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID || CHAIN_CHANNEL_ID || '';
+const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID || '';
+
+// Server-only features (!image, !tts, !say). Disabled unless ENABLE_LOCAL_MEDIA=true.
+const ENABLE_LOCAL_MEDIA = (process.env.ENABLE_LOCAL_MEDIA || '').toLowerCase() === 'true';
 
 let factionFeatures = null;
 
@@ -161,73 +167,105 @@ const TORN_GUILD_ID = process.env.GUILD_ID || '';
 
 const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image', 'pray'];
 
-const TORN_HELP =
-  '**Torn**\n' +
-  '`!abroad <item>` — which countries have an item\n' +
-  '`!activity [name]` — faction member last-active tracking\n' +
-  '`!alert on|off` — DM me when watched items hit a buy/sell signal\n' +
-  '`!arbitrage` — bazaar → item-market flip opportunities\n' +
-  '`!armory` — faction armory inventory (weapons/armor/drugs)\n' +
-  '`!auctions <item>` — auction house listings\n' +
-  '`!baldr <name>` / `!baldr list <level>` / `!baldr scan <id>` — search Baldr\'s full levelling list\n' +
-  '`!bank balance` / `!bank req <amount> [reason]` — faction vault\n' +
-  '`!bars` — your energy/nerve/happy\n' +
-  '`!bounties` — bounty board\n' +
-  '`!calendar` — upcoming game events\n' +
-  '`!chainreport` — current + recent chain stats\n' +
-  '`!courses` / `!courses <name>` — education courses, stats gained + duration\n' +
-  '`!crime-route` — best crime for your level/stats\n' +
-  '`!digest` — force the daily market digest\n' +
-  '`!dirtybombs` — recent dirty bomb events\n' +
-  '`!events` — your recent in-game events + notifications\n' +
+const TORN_HELP_PUBLIC =
+  '**Torn** — Public Commands\n' +
+  '`!torn [id]` — player profile\n' +
   '`!faction [id]` — faction info\n' +
-  '`!finances` — faction bank balance + member balances\n' +
-  '`!flipcalc <item> <qty> <buy> [sell]` — profit calculator\n' +
-  '`!flips` — buy-low/sell-high\n' +
-  '`!gain` — energy/nerve refill planner\n' +
-  '`!gain on|off` — DM when energy/nerve fills, a course completes, or a bank investment matures\n' +
-  '`!timers` — view your active timers now (bars, cooldowns, course, bank investment)\n' +
-  '`!guide` — your personalized next steps\n' +
-  '`!guide on|off` — daily guide DM (10:00 local, same message updated)\n' +
-  '`!hj` / `!hj guide` — happy jump helper (energy, happy, drug/booster cooldowns)\n' +
-  '`!interview <job>` — job interview answers\n' +
   '`!item <name|id>` — market prices\n' +
+  '`!prices <item> [...]` — scan multiple items\n' +
+  '`!ph <item>` — price history\n' +
+  '`!stock <item>` — Torn City shop stock\n' +
+  '`!travel [country]` — abroad shop stock\n' +
+  '`!abroad <item>` — which countries have an item\n' +
+  '`!members` — member status board (with timezone where known)\n' +
+  '`!territory` — faction territory\n' +
+  '`!known <name>` / `!known sync` — everyone the bot has ever seen\n' +
+  '`!courses` / `!courses <name>` — education courses, stats gained + duration\n' +
+  '`!interview <job>` — job interview answers\n' +
+  '`!ocs` — organized crime list + rewards\n' +
+  '`!bounties` — bounty board\n' +
+  '`!dirtybombs` — recent dirty bomb events\n' +
+  '`!calendar` — upcoming game events\n' +
+  '`!points` — points market prices\n' +
+  '`!auctions <item>` — auction house listings\n' +
+  '`!museum` — museum sets + point payouts\n' +
+  '`!junk` — list trash/vendor items\n' +
+  '`!ping` — latency';
+
+const TORN_HELP_MEMBER =
+  '**Member** (run `!torn setup` to unlock)\n' +
+  '`!bars` — your energy/nerve/happy\n' +
+  '`!gain` / `!gain on|off` — refill planner + DM alerts\n' +
+  '`!guide` / `!guide on|off` — personalized next steps + daily DM\n' +
+  '`!alert on|off` — DM when watched items hit a signal\n' +
+  '`!timers` — active timers (bars, cooldowns, course, bank)\n' +
+  '`!crime-route` — best crime for your level/stats\n' +
+  '`!levelpacer` — time to next level\n' +
   '`!job-apply` — jobs you qualify for + interview\n' +
   '`!jobinfo` — current job, points, ranks\n' +
-  '`!junk` — list trash/vendor items (no use: Other, Collectible, Unused)\n' +
-  '`!known <name>` / `!known sync` — everyone the bot has ever seen\n' +
-  '`!levelpacer` — time to next level\n' +
-  '`!link <torn-id>` — link your Torn account\n' +
-  '`!medals` / `!medals next` — medals earned + next\n' +
-  '`!members` — member status board (with timezone where known)\n' +
-  '`!tz <location>` — set/update your timezone or location for `!members`\n'+
-  '`!merits` / `!merits next` / `!merits earned` — honor list + next-easiest to earn\n' +
-  '`!museum` — museum sets + point payouts\n' +
-  '`!networth` — your networth breakdown\n' +
-  '`!notify status` — show faction alert monitors\n' +
-  '`!ocs` — organized crime list + rewards\n' +
-  '`!perks` / `!perks all` — faction perk tree (branch, level, respect cost, ability)\n' +
-  '`!ph <item>` — price history\n' +
-  '`!ping` — latency\n' +
-  '`!points` — points market prices\n' +
-  '`!prices <item> [...]` — scan multiple items\n' +
-  '`!roster [name]` — member list with level/location/last-active/days\n' +
-  '`!stock <item>` — Torn City shop stock\n' +
+  '`!digest` — force the daily market digest\n' +
   '`!target` — find easy kills (add/skip/scan/lists)\n' +
-  '`!territory` — faction territory\n' +
-  '`!torn [id]` — player profile\n' +
-  '`!travel [country]` — abroad shop stock\n' +
-  '`!tts <text>` / `!tts voice <name>` — text-to-speech (Pocket TTS)\n' +
-  '`!say <text>` — speak out loud in your voice channel\n' +
-  '`!image <prompt>` — generate a 1024x1024 photo on the local GPU (Z-Image Turbo)\n' +
-  '`!pray on` — daily church prayer reminder (DM at a set hour)\n' +
-  '`!verify` — verify your Torn account is a faction member\n' +
+  '`!hj` / `!hj guide` — happy jump helper\n' +
+  '`!baldr <name>` / `!baldr list <level>` — search Baldr\'s levelling list\n' +
+  '`!flipcalc <item> <qty> <buy> [sell]` — profit calculator\n' +
+  '`!flips` — buy-low/sell-high\n' +
+  '`!arbitrage` — bazaar → item-market flip opportunities\n' +
+  '`!merits` / `!merits next` — honor list + next-easiest\n' +
+  '`!perks` / `!perks all` — faction perk tree\n' +
+  '`!networth` — your networth breakdown\n' +
+  '`!medals` / `!medals next` — medals earned + next\n' +
+  '`!finances` — faction bank balance + member balances\n' +
+  '`!chainreport` — current + recent chain stats\n' +
+  '`!armory` — faction armory inventory\n' +
   '`!wars` — faction wars (ranked/raids/territory)\n' +
+  '`!roster [name]` — member list with level/location/last-active\n' +
+  '`!activity [name]` — faction member last-active tracking\n' +
+  '`!events` — your recent in-game events + notifications\n' +
+  '`!notify status` — show faction alert monitors\n' +
+  '`!link <torn-id>` — link your Torn account\n' +
+  '`!torn disconnect` — unlink your Torn account\n' +
+  '`!torn verify` — verify your account is a faction member\n' +
+  '`!tz <location>` — set/update your timezone\n' +
   '`!watch <item>` / `!unwatch <item>` — track prices\n' +
-  '`!watchlist` — list tracked items';
+  '`!watchlist` — list tracked items\n' +
+  '`!pray on` — daily church prayer reminder';
+
+const TORN_HELP_OFFICER =
+  '**Officer**\n' +
+  '`!permissions` — view role/member tier roster\n' +
+  '`!torn verify` — verify a user is a faction member';
+
+const TORN_HELP_OWNER =
+  '**Owner / Co-Owner**\n' +
+  '`!promote @user` — promote one tier\n' +
+  '`!demote @user [tier]` — demote (lowest: member)\n' +
+  '`!tier @user` / `!tier @user <tier>` — show/assign tier\n' +
+  '`!permissions` — full tier roster';
 
 async function handleHelp(message) {
-  await message.reply(TORN_HELP);
+  const guildMember = message?.guild?.members?.cache?.get(message.author.id);
+  const tier = permissions.getUserTier(guildMember, message.author.id);
+  const tierOrder = permissions.TIER_ORDER;
+
+  const parts = [TORN_HELP_PUBLIC];
+
+  if (tierOrder[tier] >= tierOrder.member) {
+    parts.push('');
+    parts.push(TORN_HELP_MEMBER);
+  }
+
+  if (tierOrder[tier] >= tierOrder.officer) {
+    parts.push('');
+    parts.push(TORN_HELP_OFFICER);
+  }
+
+  if (tierOrder[tier] >= tierOrder.co_owner) {
+    parts.push('');
+    parts.push(TORN_HELP_OWNER);
+  }
+
+  const reply = await message.reply(parts.join('\n'));
+  setTimeout(() => reply.delete().catch(() => {}), 120_000);
 }
 const PRICES_FILE = '/opt/discord-bot/prices.json';
 const DEFAULT_WATCH = ['Xanax', 'Morphine', 'First Aid Kit', 'Small First Aid Kit', 'Ecstasy', 'Bag of Candy Kisses', 'Lollipop', 'Six-Pack of Energy Drink', 'Bottle of Beer', 'LSD', 'Speed', 'PCP', 'Ketamine', 'Shrooms', 'Opium', 'Vicodin', 'Dumbbells', 'Sheep Plushie', 'Teddy Bear Plushie', 'Donator Pack'];
@@ -245,102 +283,10 @@ function isPriceStale(rec) {
   return lastPriceAge(rec) > STALE_SECONDS;
 }
 
-const MECHANICS = {
-  speedflip: {
-    name: 'Speed Flip',
-    aliases: ['speedflip', 'speedflipkickoff'],
-    tip: 'Diagonal-flip at 15-20 degrees, then instantly flick the stick straight DOWN to cancel the flip, then air roll to level your wheels. The Musty speed-flip kickoff test pack is the real check - if you can\'t reach the ball, your cancel is late or your angle is off.',
-    url: 'https://www.youtube.com/watch?v=41nSg_NlWr4',
-  },
-  halfflip: {
-    name: 'Half Flip',
-    aliases: ['halfflip'],
-    tip: 'Backflip, and halfway through (nose pointing down-back) push the stick forward to cancel, then hold a directional air roll to spin your wheels onto the ground. Bind ARL/ARR to a shoulder button so it becomes one clean motion instead of three.',
-    url: 'https://www.youtube.com/watch?v=FtgzgYhApuU',
-  },
-  wavedash: {
-    name: 'Wave Dash',
-    aliases: ['wavedash', 'wavedashes'],
-    tip: 'Jump, tilt so one side of your wheels points at the ground, then flip the instant you land while holding powerslide - it carries your momentum with zero boost. Chain them off walls and in net to recover faster than anyone who waits to land.',
-    url: 'https://www.youtube.com/watch?v=Xk-XWaauhdA',
-  },
-  flipreset: {
-    name: 'Flip Reset',
-    aliases: ['flipreset', 'reset'],
-    tip: 'Fly at the ball upside-down, let OFF boost, and pull the stick back so all four wheels "slap" the ball - that slap is what re-grants your dodge. Train the reset alone on a Wall-to-Air-Dribble pack before trying to score off it.',
-    url: 'https://www.youtube.com/watch?v=ESxkKkvD_uM',
-  },
-  airdribble: {
-    name: 'Air Dribble',
-    aliases: ['airdribble', 'airdribbles'],
-    tip: 'Jump the instant you touch the ball off the wall so you stay glued, then FEATHER boost (never hold) and sit 3/4 under the ball with your nose on the 5-o\'clock spot. Match ball speed - if you push it forward you\'re not dribbling, you\'re chasing.',
-    url: 'https://www.youtube.com/watch?v=AsREWK-F370',
-  },
-  rotation: {
-    name: 'Rotation',
-    aliases: ['rotation', 'rotate'],
-    tip: 'Fill the gap your teammates leave - it\'s never a fixed 1-2-3 order. Rotate to the BACK post (away from the ball) so you come in with momentum, and never cut in front of your own last man to hit a ball they\'re already covering.',
-    url: 'https://www.youtube.com/watch?v=cVllW6eD-sA',
-  },
-  shadow: {
-    name: 'Shadow Defense',
-    aliases: ['shadow', 'shadowdefense', 'shadowdefend'],
-    tip: 'Mirror the attacker slightly OFF the ball-to-goal line toward your far post, staying just outside their shot range. Throw a fake challenge (turn toward them, then back) to force them to flick early - then punish the mistake.',
-    url: 'https://www.youtube.com/watch?v=j23wicsllMw',
-  },
-  fastaerial: {
-    name: 'Fast Aerial',
-    aliases: ['fastaerial', 'aerial', 'aerials'],
-    tip: 'Hold the stick back + boost BEFORE you jump, hold the first jump ~1/5 second for max height, release the stick, then second jump. The order is jump-TILT-jump, not jump-jump-tilt - that\'s why you get beat to high balls.',
-    url: 'https://www.youtube.com/watch?v=qSduNdQeL7Q',
-  },
-  airroll: {
-    name: 'Directional Air Roll',
-    aliases: ['airroll', 'dar', 'directionalairroll'],
-    tip: 'Bind ARL or ARR to a shoulder button. With ARL held: stick down-right turns LEFT, stick up-right turns RIGHT - tornado spin controls your speed, those two directions control where you go. Practice rings maps at 25-50% game speed first.',
-    url: 'https://www.youtube.com/watch?v=bYveY7WuDo0',
-  },
-  powershot: {
-    name: 'Power Shot',
-    aliases: ['powershot', 'shooting', 'shot'],
-    tip: 'Wait for the ball to bounce, then hit the LOWER-MIDDLE of the ball with the nose/corner of your car and dodge into it right after the bounce - the bounce gives you free power. Hitting under the ball raises it, hitting higher keeps it low.',
-    url: 'https://www.youtube.com/watch?v=jOjzJb4r3Zo',
-  },
-  dribble: {
-    name: 'Dribbling & Flicks',
-    aliases: ['dribble', 'dribbling', 'flick', 'flicks'],
-    tip: 'Keep the ball in the center circle on your hood, NEVER tap brake (ease off gas instead), and steer with tiny stick nudges. The flick sweet spot is slightly back of center on your car - too far forward = no power, too far back = ball goes behind you.',
-    url: 'https://www.youtube.com/watch?v=noLjmDoAq1s',
-  },
-  kickoff: {
-    name: 'Kickoff',
-    aliases: ['kickoff', 'kickoffs'],
-    tip: 'Do ONE diagonal flip on the way in to save boost, and read the opponent\'s nameplate: hook the ball opposite them if you\'re on the same side, push it if opposite. Rule: "left goes" when both teammates can take it.',
-    url: 'https://www.youtube.com/watch?v=nF68ltp01o0',
-  },
-  recovery: {
-    name: 'Recoveries',
-    aliases: ['recovery', 'recoveries', 'landing'],
-    tip: 'Any bump that lifts all four wheels gives you a FREE flip to re-orient. When you land sideways, hold powerslide so you don\'t lose momentum, then flip in your travel direction. Practice front-flip-half-flip back and forth down the field.',
-    url: 'https://www.youtube.com/watch?v=dywxcjl7B9E',
-  },
-  boost: {
-    name: 'Boost Management',
-    aliases: ['boost', 'pads', 'boostmanagement'],
-    tip: 'Memorize the pad lanes (the oval = 8 pads, the triangle = 3) so you pick up pads WITHOUT looking. Never drop below ~30 boost while rotating back - small pads beat leaving position for a full boost.',
-    url: 'https://www.youtube.com/watch?v=edWi_ATGh9A',
-  },
-  fifty: {
-    name: '50/50s & Challenges',
-    aliases: ['50', '5050', '50s', 'fifty', 'fifties'],
-    tip: 'Win 50s by taking the INSIDE position so a loss deflects to the corner instead of your net. On low balls, turn your car sideways to center your hitbox, and dodge down into the ball for a "dunk" when you arrive from above.',
-    url: 'https://www.youtube.com/watch?v=J0DfNsMYXgg',
-  },
-};
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent,
@@ -398,6 +344,29 @@ client.once(Events.ClientReady, (c) => {
   setInterval(() => { knownPlayers.syncAll().catch(() => {}); }, 30 * 60 * 1000);
 });
 
+client.on(Events.GuildMemberAdd, async (member) => {
+  try {
+    const welcomeMsg =
+      `\u{1F44B} Welcome to **${member.guild.name}**, **${member.displayName}**!\n\n` +
+      `Please run **\`!torn setup\`** in any channel to connect your Torn account ` +
+      `(then \`!torn\`, \`!bars\`, \`!gain\`, \`!coach\` and the rest will work for **you**).\n\n` +
+      `Not sure where to find a key? Get one at \`torn.com/preferences -> API Key\`. Use \`!help\` any time.`;
+
+    if (WELCOME_CHANNEL_ID) {
+      const channel = await client.channels.fetch(WELCOME_CHANNEL_ID).catch(() => null);
+      if (channel && channel.send) {
+        await channel.send(welcomeMsg);
+      } else {
+        await member.send(welcomeMsg);
+      }
+    } else {
+      await member.send(welcomeMsg);
+    }
+  } catch (e) {
+    console.error(`[discord-bot] welcome send failed for ${member.displayName}: ${e.message}`);
+  }
+});
+
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
   if (message.content.startsWith(PREFIX)) {
@@ -443,17 +412,8 @@ async function handleCommand(message) {
     case 'ask':
       await message.reply('`!ask` has been removed. Use the live commands instead: `!bars`, `!gain`, `!torn <id>`, `!faction`, `!prices <item>`, `!item <name>`, `!crime-route`, `!levelpacer`. Run `!help` for the full list.');
       break;
-    case 'tip':
-      await handleTip(message, rest);
-      break;
-    case 'tips':
-      await handleTipsList(message);
-      break;
     case 'flip':
       await message.reply(Math.random() < 0.5 ? 'Heads' : 'Tails');
-      break;
-    case 'teams':
-      await handleTeams(message);
       break;
     case 'torn':
       if (args[0] === 'setup') {
@@ -462,7 +422,11 @@ async function handleCommand(message) {
         await setupCommands.handleTornStatus(message);
       } else if (args[0] === 'disconnect') {
         await setupCommands.handleTornDisconnect(message);
+      } else if (args[0] === 'verify') {
+        if (!permissions.requireAccess(message, message.author.id, 'officer')) break;
+        await setupCommands.handleTornVerify(message);
       } else {
+        if (!permissions.requireAccess(message, message.author.id, 'member')) break;
         await handleTorn(message, args[0]);
       }
       break;
@@ -503,6 +467,7 @@ async function handleCommand(message) {
       await handleLink(message, rest);
       break;
     case 'guide':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await handleGuide(message, rest);
       break;
     case 'interview':
@@ -531,17 +496,21 @@ async function handleCommand(message) {
       await handleFlip(message);
       break;
     case 'bars':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await handleBars(message);
       break;
     case 'gain':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await handleGain(message, args);
       break;
     case 'timers':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await handleTimers(message);
       break;
     case 'crime':
     case 'crimeroute':
     case 'crime-route':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await handleCrimeRoute(message);
       break;
     case 'flipcalc':
@@ -549,35 +518,45 @@ async function handleCommand(message) {
       break;
     case 'levelpacer':
     case 'pacer':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await handleLevelPacer(message);
       break;
     case 'job':
     case 'jobapply':
     case 'job-apply':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await handleJobApply(message, rest);
       break;
     case 'digest':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await sendDailyDigest(message);
       break;
     case 'alert':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await handleAlert(message, rest);
       break;
     case 'bulk':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await handleBulk(message);
       break;
     case 'clear':
+      if (!permissions.requireAccess(message, message.author.id, 'officer')) break;
       await handleClear(message, args);
       break;
     case 'coach':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await personalCommands.handleCoach(message);
       break;
     case 'education':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await personalCommands.handleEducation(message);
       break;
     case 'money':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await personalCommands.handleMoney(message);
       break;
     case 'target':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await targetCommands.handleTarget(message, args);
       break;
     case 'baldr':
@@ -588,12 +567,15 @@ async function handleCommand(message) {
       break;
     case 'hj':
     case 'happyjump':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await happyjumpCommands.handleHappyJump(message, args);
       break;
     case 'merits':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await meritsCommands.handleMerits(message, args);
       break;
     case 'perks':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await perksCommands.handlePerks(message, args);
       break;
     case 'courses':
@@ -606,15 +588,19 @@ async function handleCommand(message) {
       await rosterCommands.handleRoster(message, args);
       break;
     case 'finances':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await factionStatsCommands.handleFinances(message);
       break;
     case 'chainreport':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await factionStatsCommands.handleChainReport(message);
       break;
     case 'armory':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await factionStatsCommands.handleArmory(message);
       break;
     case 'wars':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await factionStatsCommands.handleWars(message);
       break;
     case 'arbitrage':
@@ -630,15 +616,19 @@ async function handleCommand(message) {
       await economyCommands.handleMuseum(message);
       break;
     case 'networth':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await personalStatsCommands.handleNetworth(message);
       break;
     case 'medals':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await personalStatsCommands.handleMedals(message, args);
       break;
     case 'jobinfo':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await personalStatsCommands.handleJob(message);
       break;
     case 'events':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await personalStatsCommands.handleEvents(message);
       break;
     case 'calendar':
@@ -657,63 +647,41 @@ async function handleCommand(message) {
       await knownCommands.handleKnown(message, args);
       break;
     case 'tts':
+      if (!ENABLE_LOCAL_MEDIA) break;
+      if (!permissions.requireAccess(message, message.author.id, 'officer')) break;
       await ttsCommands.handleTts(message, args);
       break;
     case 'say':
+      if (!ENABLE_LOCAL_MEDIA) break;
+      if (!permissions.requireAccess(message, message.author.id, 'officer')) break;
       await ttsCommands.handleSay(message, args);
       break;
     case 'image':
+      if (!ENABLE_LOCAL_MEDIA) break;
+      if (!permissions.requireAccess(message, message.author.id, 'officer')) break;
       await imageCommands.handleImage(message, args);
+      break;
+    case 'tier':
+      if (!permissions.requireAccess(message, message.author.id, 'owner')) break;
+      await permissions.handleTierCommand(message, rest);
+      break;
+    case 'permissions':
+      if (!permissions.requireAccess(message, message.author.id, 'officer')) break;
+      await permissions.handlePermissionsCommand(message);
+      break;
+    case 'promote':
+      await permissions.handlePromoteCommand(message, rest);
+      break;
+    case 'demote':
+      await permissions.handleDemoteCommand(message, rest);
+      break;
+    case 'remove':
+      await permissions.handleRemoveCommand(message);
       break;
     case 'pray':
       await handlePray(message, args);
       break;
   }
-}
-
-async function handleTip(message, query) {
-  const q = (query || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (q) {
-    for (const m of Object.values(MECHANICS)) {
-      if (m.aliases.includes(q)) {
-        await message.reply(formatTip(m));
-        return;
-      }
-    }
-    await message.reply(`No guide for "${query}". Try \`!tips\` for the list.`);
-    return;
-  }
-  const keys = Object.keys(MECHANICS);
-  const m = MECHANICS[keys[Math.floor(Math.random() * keys.length)]];
-  await message.reply(formatTip(m));
-}
-
-async function handleTipsList(message) {
-  const names = Object.values(MECHANICS)
-    .map((m) => `\`${m.aliases[0]}\``)
-    .join(' ');
-  await message.reply(`Available mechanics:\n${names}\n\nUse \`!tip <name>\`, e.g. \`!tip airroll\`.`);
-}
-
-function formatTip(m) {
-  return `**${m.name}**\n${m.tip}\nGuide: ${m.url}`;
-}
-
-async function handleTeams(message) {
-  const players = Array.from(message.mentions.users.values()).filter((u) => !u.bot);
-  if (players.length < 2) {
-    await message.reply('Mention at least 2 players: `!teams @a @b @c @d @e @f`');
-    return;
-  }
-  const shuffled = shuffle(players);
-  const half = Math.floor(shuffled.length / 2);
-  const teamA = shuffled.slice(0, half);
-  const teamB = shuffled.slice(half);
-  let out = `**Blue:** ${teamA.join(' ')}\n**Orange:** ${teamB.join(' ')}`;
-  if (shuffled.length % 2 === 1) {
-    out += `\n\u26a0\ufe0f Odd count (${shuffled.length} players) — one team has an extra; reroll or add a player.`;
-  }
-  await message.reply(out);
 }
 
 // --- Torn ---
@@ -741,9 +709,25 @@ async function tornGet(section, id, selections, version, keyOrIndex = 0) {
 }
 
 async function handleTorn(message, id) {
+  let key;
+  if (id) {
+    key = TORN_API_KEY;
+  } else {
+    const account = accountStore.getAccount(message.author.id);
+    if (!account) {
+      await message.reply('I couldn\'t find a connected Torn account for you. Run `!torn setup` to connect yours, or pass a player id: `!torn 123456`.');
+      return;
+    }
+    key = accountStore.getApiKey(message.author.id);
+    if (!key) {
+      await message.reply('Your API key could not be retrieved. Use `!torn setup` to reconnect.');
+      return;
+    }
+    id = account.tornPlayerId;
+  }
   const reply = await message.reply('Fetching\u2026');
   try {
-    const d = await tornGet('user', id, 'profile,battlestats,networth');
+    const d = await tornGet('user', id, 'profile,battlestats,networth', 1, key);
     const lines = [];
     lines.push(`**${d.name || 'Player'}** [${d.player_id || id || 'you'}]`);
     if (d.level != null) lines.push(`Level: ${d.level}  •  Rank: ${d.rank || '?'}`);
@@ -1491,14 +1475,22 @@ function bar(b) {
 }
 
 function fmtTime(totalSeconds) {
+  return fmtDuration(totalSeconds);
+}
+
+function fmtDuration(totalSeconds) {
   const s = Math.max(0, Math.round(Number(totalSeconds) || 0));
   if (s <= 0) return 'Ready';
-  const h = Math.floor(s / 3600);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  if (h > 0) return `${h}h ${m}m ${sec}s`;
-  if (m > 0) return `${m}m ${sec}s`;
-  return `${sec}s`;
+  const parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  parts.push(`${sec}s`);
+  return `${parts.join(' ')}`;
 }
 
 const GAIN_WATCH_FILE = '/opt/discord-bot/gain-watch.json';
@@ -2087,9 +2079,7 @@ function fmt(n) {
 function fmtSeconds(s) {
   const n = Number(s) || 0;
   if (n <= 0) return 'Ready';
-  const m = Math.floor(n / 60);
-  const sec = n % 60;
-  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  return fmtDuration(n);
 }
 
 // --- Chain monitor ---
@@ -3120,15 +3110,6 @@ function timeAgo(ts) {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
-}
-
-function shuffle(arr) {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
 }
 
 process.on('SIGTERM', () => {

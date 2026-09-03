@@ -3,6 +3,21 @@ const { tornGet } = require('../services/torn-api');
 const accountStore = require('../services/account-store');
 const { analyzeState, generateRecommendations, formatCoachResponse } = require('../services/recommendation');
 
+function fmtTime(s) {
+  const v = Math.max(0, Math.round(Number(s) || 0));
+  if (v <= 0) return 'Ready';
+  const d = Math.floor(v / 86400);
+  const h = Math.floor((v % 86400) / 3600);
+  const m = Math.floor((v % 3600) / 60);
+  const sec = v % 60;
+  const parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  parts.push(`${sec}s`);
+  return `${parts.join(' ')}`;
+}
+
 async function handleCoach(message) {
   const userId = message.author.id;
   const account = accountStore.getAccount(userId);
@@ -71,10 +86,10 @@ async function handleBars(message) {
 
     if (cooldowns) {
       lines.push('');
-      if (cooldowns.drug) lines.push(`Drug: ${cooldowns.drug}`);
-      if (cooldowns.medical) lines.push(`Medical: ${cooldowns.medical}`);
-      if (cooldowns.booster) lines.push(`Booster: ${cooldowns.booster}`);
-      if (cooldowns.candy) lines.push(`Candy: ${cooldowns.candy}`);
+      if (cooldowns.drug) lines.push(`Drug: ${fmtTime(cooldowns.drug)}`);
+      if (cooldowns.medical) lines.push(`Medical: ${fmtTime(cooldowns.medical)}`);
+      if (cooldowns.booster) lines.push(`Booster: ${fmtTime(cooldowns.booster)}`);
+      if (cooldowns.candy) lines.push(`Candy: ${fmtTime(cooldowns.candy)}`);
     }
 
     const energy = bars.energy?.current || 0;

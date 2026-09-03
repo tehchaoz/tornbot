@@ -141,7 +141,7 @@ function updatePreferences(discordUserId, updates) {
 }
 
 function getAllAccounts() {
-  return db.prepare('SELECT discord_user_id, torn_player_id, torn_username, status, last_validated_at, timezone FROM torn_accounts').all();
+  return db.prepare('SELECT discord_user_id, torn_player_id, torn_username, status, created_at, last_validated_at, timezone FROM torn_accounts').all();
 }
 
 module.exports = {

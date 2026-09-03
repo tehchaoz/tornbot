@@ -5,8 +5,7 @@ A self-hosted Discord bot for [Torn City](https://www.torn.com). Built with
 
 It keeps a live item price board in your server, watches markets and fires DM
 alerts, tracks your faction (chains, wars, bank, armory, territory, activity),
-helps you plan gains and happy jumps, finds easy targets, and even runs a
-personal coach using a local LLM (Ollama) plus text-to-speech.
+helps you plan gains and happy jumps, and finds easy targets.
 
 Everything is configured through `.env` — **no API keys are stored in code**.
 Fork this repo and point it at your own bot and Torn API key.
@@ -22,16 +21,14 @@ Fork this repo and point it at your own bot and Torn API key.
 
 Optional:
 - A local [Ollama](https://ollama.com) server for the AI coach (`!coach`) and knowledge base
-- A [Pocket TTS](https://github.com/Otto-7/pockettts) service for `!tts` / `!say`
-- A local [Z-Image Turbo](https://github.com/ggml-org/stable-diffusion.cpp) GPU service (sd.cpp) for `!image`
 
 ## 1. Create the Discord bot
 
 1. Go to https://discord.com/developers/applications → **New Application**.
 2. **Bot** → **Reset Token** and copy the token.
 3. Enable the **Message Content** intent (Server Members intent optional).
-4. Invite the bot to your server with: **Manage Messages**, **Send Messages**,
-   **Embed Links**, **Read Message History**, and **Connect**/**Speak** (for `!tts`/`!say`).
+4. Invite the bot to your server with: **Manage Messages**, **Send Messages**, and
+   **Embed Links**.
 
 ## 2. Get a Torn API key
 
@@ -182,11 +179,6 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 | `!bounties` | Bounty board |
 | `!ocs` | Organized crime list + rewards |
 | `!digest` | Force the daily market digest |
-| `!tips` / `!tip <name>` | Rocket League training tips |
-| `!teams @a @b ...` | Random team splitter (mentions 2+ players) |
-| `!tts <text>` / `!tts voice <name>` | Text-to-speech (Pocket TTS) |
-| `!say <text>` | Speak out loud in your voice channel |
-| `!image <prompt>` | Generate a 1024x1024 photo on the local GPU (Z-Image Turbo) |
 | `!ping` | Latency |
 
 ## Project layout

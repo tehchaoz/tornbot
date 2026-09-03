@@ -35,17 +35,13 @@ function formatDuration(sec) {
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (d > 0) {
-    if (h > 0) return `${d}d ${h}h`;
-    if (m > 0) return `${d}d ${m}m`;
-    return `${d}d`;
-  }
-  if (h > 0) {
-    if (m > 0) return `${h}h ${m}m`;
-    return `${h}h`;
-  }
-  if (m > 0) return `${m}m`;
-  return `${s}s`;
+  const remainder = s % 60;
+  const parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  if (parts.length === 0 || remainder > 0) parts.push(`${Math.round(remainder)}s`);
+  return s <= 0 ? '0s' : `${parts.join(' ')}`;
 }
 
 function formatResults(results) {
