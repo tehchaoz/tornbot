@@ -192,6 +192,13 @@ function createChainCommands(ctx) {
     return false;
   }
 
+  // Transient status replies auto-delete after 5 minutes to keep the channel clean.
+  const MARKER_DELETE_MS = 5 * 60 * 1000;
+  async function markMessageForDeletion(msg) {
+    if (!msg) return;
+    setTimeout(() => msg.delete().catch(() => {}), MARKER_DELETE_MS);
+  }
+
   // Create reminders for a joiner, storing rows in chain_reminders.
   async function scheduleJoinerReminders(chain, account, nowMs) {
     const cooldown = await getMemberCooldown(account.discordUserId);
@@ -235,36 +242,37 @@ function createChainCommands(ctx) {
 
     const when = fmtDateTime(targetMs);
     const remaining = fmtDuration(targetMs - nowMs);
-    await message.reply(
+    const confirm = await message.reply(
       `\uD83D\uDD14 Chain scheduled!\n\n` +
       `**Start:** ${when}\n**In:** ${remaining}\n\n` +
       `Members: run \`!chain join\` to sign up for Xanax reminders.\n` +
       `Officers: \`!chain list\` to see who's in.`
     );
+    markMessageForDeletion(confirm);
     await announce(`\uD83D\uDD14 New chain scheduled by <@${message.author.id}>:\n**${when}** (${remaining} from now)\n\nReply \`!chain join\` to sign up.`);
   }
 
   async function handleJoin(message) {
     const chain = latestFutureChain();
     if (!chain) {
-      await message.reply('There is no chain scheduled right now. An officer sets one with `!chain <date> <time>`.');
+      markMessageForDeletion(await message.reply('There is no chain scheduled right now. An officer sets one with `!chain <date> <time>`.'));
       return;
     }
 
     const account = accountStore.getAccount(message.author.id);
     if (!account) {
-      await message.reply('You need to connect your Torn account first.\nRun `!torn setup` to get started.');
+      markMessageForDeletion(await message.reply('You need to connect your Torn account first.\nRun `!torn setup` to get started.'));
       return;
     }
 
     const nowMs = Date.now();
     const existing = db.prepare('SELECT * FROM chain_joiners WHERE chain_id = ? AND discord_user_id = ?').get(chain.chain_id, message.author.id);
     if (existing) {
-      await message.reply(`You're already signed up for the ${fmtDateTime(chain.target_ts)} chain. Use \`!chain list\` to check your plan.`);
+      markMessageForDeletion(await message.reply(`You're already signed up for the ${fmtDateTime(chain.target_ts)} chain. Use \`!chain list\` to check your plan.`));
       return;
     }
 
-    await message.reply(`Signing you up for the ${fmtDateTime(chain.target_ts)} chain...`);
+    markMessageForDeletion(await message.reply(`Signing you up for the ${fmtDateTime(chain.target_ts)} chain...`));
 
     const { plan, cooldown } = await scheduleJoinerReminders(chain, account, nowMs);
 
@@ -283,13 +291,13 @@ function createChainCommands(ctx) {
     }
     lines.push(``);
     lines.push(`You'll be @mentioned here shortly before each dose.`);
-    await message.reply(lines.join('\n'));
+    markMessageForDeletion(await message.reply(lines.join('\n')));
   }
 
   async function handleList(message) {
     const chain = latestFutureChain();
     if (!chain) {
-      await message.reply('No chain scheduled right now.');
+      markMessageForDeletion(await message.reply('No chain scheduled right now.'));
       return;
     }
 
@@ -311,34 +319,34 @@ function createChainCommands(ctx) {
     }
     lines.push(``);
     lines.push(`Total: ${joiners.length} signed up.`);
-    await message.reply(lines.join('\n'));
+    markMessageForDeletion(await message.reply(lines.join('\n')));
   }
 
   async function handleLeave(message) {
     const chain = latestFutureChain();
     if (!chain) {
-      await message.reply('No chain scheduled right now.');
+      markMessageForDeletion(await message.reply('No chain scheduled right now.'));
       return;
     }
 
     const removed = db.prepare('DELETE FROM chain_joiners WHERE chain_id = ? AND discord_user_id = ?').run(chain.chain_id, message.author.id);
     db.prepare('DELETE FROM chain_reminders WHERE chain_id = ? AND discord_user_id = ?').run(chain.chain_id, message.author.id);
     if (removed.changes > 0) {
-      await message.reply(`You've left the chain. No more Xanax reminders for you.`);
+      markMessageForDeletion(await message.reply(`You've left the chain. No more Xanax reminders for you.`));
     } else {
-      await message.reply(`You weren't signed up.`);
+      markMessageForDeletion(await message.reply(`You weren't signed up.`));
     }
   }
 
   async function handleCancel(message) {
     const chain = latestFutureChain();
     if (!chain) {
-      await message.reply('No chain scheduled right now.');
+      markMessageForDeletion(await message.reply('No chain scheduled right now.'));
       return;
     }
     db.prepare('UPDATE chain_schedule SET cancelled = 1 WHERE chain_id = ?').run(chain.chain_id);
     db.prepare('DELETE FROM chain_reminders WHERE chain_id = ?').run(chain.chain_id);
-    await message.reply(`\uD83D\uDEAB Chain for ${fmtDateTime(chain.target_ts)} cancelled. All signups cleared.`);
+    markMessageForDeletion(await message.reply(`\uD83D\uDEAB Chain for ${fmtDateTime(chain.target_ts)} cancelled. All signups cleared.`));
     await announce(`\uD83D\uDEAB Chain for ${fmtDateTime(chain.target_ts)} cancelled by <@${message.author.id}>.`);
   }
 
