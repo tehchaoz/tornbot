@@ -45,12 +45,47 @@ configure things yourself or want extra control.
 
 ## 1. Create the Discord bot
 
+### 1a. Create the application and get the token
+
 1. Go to https://discord.com/developers/applications → **New Application**.
-2. **Bot** → **Reset Token** and copy the token.
-3. Enable the **Message Content** intent (and the **Presence** / **Server
-   Members** intents for member tracking).
-4. Invite the bot to your server with: **Manage Messages**, **Send Messages**,
-   **Embed Links**, and **Read Message History**.
+2. Give it a name and click **Create**.
+3. In the left sidebar, click **Bot**.
+4. Click **Reset Token** → **Yes, do it!**, then **Copy**. Paste that token into
+   your `.env` as `DISCORD_TOKEN`. Keep it secret — never commit it.
+
+### 1b. Turn on the privileged intents (required — the bot will not work without these)
+
+Still on the **Bot** page, scroll to **Privileged Gateway Intents** and turn ON:
+
+| Intent | Why it's required |
+|---|---|
+| **Message Content Intent** | Lets the bot *read* message content, so it can see `!commands` **and DM replies**. Without it, nothing responds. |
+| **Server Members Intent** | Lets the bot see when a **new member joins** (used to greet them with `!torn setup`). Without it, the welcome message and member roster break. |
+
+> Presence Intent is optional — the bot doesn't use it.
+
+Then click **Save Changes**.
+
+### 1c. Invite the bot to your server (OAuth2 URL Generator)
+
+1. In the left sidebar, click **OAuth2** → **URL Generator**.
+2. Under **Scopes**, tick **`bot`** (and **`applications.commands`** if you use
+   slash commands, otherwise skip it).
+3. Under **Bot Permissions**, tick at minimum:
+   - **View Channels**
+   - **Send Messages**
+   - **Send Messages in Threads**
+   - **Read Message History**
+   - **Embed Links**
+   - **Attach Files**
+   - **Manage Messages**
+4. Copy the generated **URL** at the bottom and open it in a browser, then pick
+   the server you want to add the bot to and authorize.
+
+> The bot needs **Read Message History** to see messages, **Direct Messages**
+> work out of the box for bots (no permission toggle, that's why DM onboarding
+> works), and **Manage Messages** lets it clean up its own messages (e.g. the
+> `!help` auto-delete).
 
 > **Windows users:** on a fresh Node LTS install everything installs as-is.
 > If `npm install` reports a build error for `better-sqlite3`, install

@@ -158,12 +158,12 @@ async function getDiscordToken() {
 }
 
 async function guideEnableIntents() {
-  // Intents are already enabled by default in most cases; give a short note.
-  console.log('\n   In the same "Bot" page, scroll a bit and you should see:\n' +
-    '     PRESENCE INTENT  - turn ON\n' +
-    '     SERVER MEMBERS INTENT - turn ON\n' +
-    '     MESSAGE CONTENT INTENT - turn ON\n' +
-    '   Click Save.');
+  // These two privileged intents are required for the bot to work.
+  console.log('\n   In the same "Bot" page, scroll to "Privileged Gateway Intents":\n' +
+    '     MESSAGE CONTENT INTENT   - turn ON  (so the bot can read your !commands and DM replies)\n' +
+    '     SERVER MEMBERS INTENT     - turn ON  (so it can greet new members joining)\n' +
+    '     PRESENCE INTENT         - leave OFF (not used)\n' +
+    '   Then click  "Save Changes".');
   await ask('   Press Enter when they\'re turned on');
 }
 
