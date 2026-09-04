@@ -154,7 +154,7 @@ function createChainCommands(ctx) {
     ownerKey = process.env.TORN_API_KEY || '',
   } = ctx || {};
 
-  init(dbPath);
+  init(dbPath || path.join(__dirname, '..', 'tornbot.db'));
 
   function latestFutureChain() {
     return db.prepare(

@@ -333,7 +333,7 @@ client.once(Events.ClientReady, (c) => {
   chainCommands = createChainCommands({
     client,
     channelId: CHAIN_CHANNEL_ID,
-    dbPath: DATABASE_PATH,
+    dbPath: DATABASE_PATH || require('path').join(__dirname, 'tornbot.db'),
     factionId: FACTION_ID,
     ownerKey: TORN_API_KEY,
   });
