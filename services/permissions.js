@@ -26,12 +26,18 @@ function getUserTier(guildMember, authorId) {
   if (!authorId) return 'public';
   if (OWNER_ID && authorId === OWNER_ID) return 'owner';
   if (config.co_owner && authorId === config.co_owner) return 'co_owner';
-  if (config.users && config.users[authorId]) return config.users[authorId];
+  if (config.users && config.users[authorId] && config.users[authorId] !== 'public') return config.users[authorId];
   if (guildMember) {
     for (const [roleId, tier] of Object.entries(config.roles || {})) {
       if (guildMember.roles.cache.has(roleId)) return tier;
     }
   }
+  // Anyone who has linked a Torn account via !torn setup is a "member" (no
+  // explicit tier assignment needed). This matches the requireAccess() hint
+  // "Run !torn setup to connect your Torn account first."
+  try {
+    if (accountStore.getAccount(authorId)) return 'member';
+  } catch (e) {}
   return 'public';
 }
 

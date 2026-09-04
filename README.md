@@ -202,6 +202,7 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 | `!territory` | Faction territory |
 | `!wars` | Faction wars (ranked / raids / territory) |
 | `!chainreport` | Current + recent chain stats |
+| `!chain <date> <time>` / `!chain join` / `!chain leave` / `!chain list` / `!chain cancel` | Plan and coordinate faction chain attacks with Xanax reminders |
 | `!notify status` | Show faction alert monitors |
 
 > **Member timezones:** `!members` shows a member's timezone when it's known. Timezones come from three
@@ -219,6 +220,24 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 > - ✈ traveling · 🌍 abroad · 🏥 hospital · 🔒 jail · 💀 fallen
 > The board refreshes on the same cycle as the price board
 > (no extra API calls beyond `MEMBER_BOARD_INTERVAL`, default 300s).
+
+### Chain attack coordinator
+Officers plan faction chains, members sign up, and the bot schedules each
+member's four Xanax before the chain starts — timing against their live
+drug cooldown from the Torn API.
+
+| Command | What it does |
+|---|---|
+| `!chain <date> <time>` | Schedule a chain. Time is Torn City Time (UTC), e.g. `!chain 09/04/26 1900`, `!chain 09/04 1900`, or bare `!chain 1900` (next time today) |
+| `!chain join` | Sign up for the scheduled chain; the bot reads your drug cooldown and builds your Xanax plan |
+| `!chain leave` | Drop out of the chain |
+| `!chain list` (officer) | Who signed up + each person's scheduled Xanax doses |
+| `!chain cancel` (officer) | Cancel the chain and clear all reminders |
+
+Reminders are posted to `CHAIN_CHANNEL_ID` with an @mention for each dose.
+If the bot restarts, pending reminders resume from the SQLite store. Each
+member's cooldown is read via their **own** Torn API key, so the added
+polls stay within the 100 req/min-per-account limit.
 
 ### Progression & jobs
 | Command | What it does |

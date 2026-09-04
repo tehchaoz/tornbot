@@ -25,6 +25,7 @@ const imageCommands = require('./commands/image');
 const knownPlayers = require('./services/known-players');
 const { wrapMessage, dmChunks, chunkText } = require('./services/reply');
 const { createFactionFeatures } = require('./commands/faction-features');
+const { createChainCommands } = require('./commands/chain');
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID || '';
 const ENABLE_LOCAL_MEDIA = (process.env.ENABLE_LOCAL_MEDIA || '').toLowerCase() === 'true';
 
 let factionFeatures = null;
+let chainCommands = null;
 
 const COUNTRY_CODES = {
   mexico: 'mex', mex: 'mex',
@@ -216,6 +218,7 @@ const TORN_HELP_MEMBER =
   '`!medals` / `!medals next` — medals earned + next\n' +
   '`!finances` — faction bank balance + member balances\n' +
   '`!chainreport` — current + recent chain stats\n' +
+  '`!chain <date> <TCT>` / `!chain join` / `!chain list` — plan and sign up for chain attacks\n' +
   '`!armory` — faction armory inventory\n' +
   '`!wars` — faction wars (ranked/raids/territory)\n' +
   '`!roster [name]` — member list with level/location/last-active\n' +
@@ -327,6 +330,14 @@ client.once(Events.ClientReady, (c) => {
   });
   factionFeatures.startRetaliationMonitor();
   factionFeatures.startOCMonitor();
+  chainCommands = createChainCommands({
+    client,
+    channelId: CHAIN_CHANNEL_ID,
+    dbPath: DATABASE_PATH,
+    factionId: FACTION_ID,
+    ownerKey: TORN_API_KEY,
+  });
+  chainCommands.start();
   startChainMonitor();
   startPriceWatcher();
   startWarMonitor();
@@ -594,6 +605,31 @@ async function handleCommand(message) {
     case 'chainreport':
       if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await factionStatsCommands.handleChainReport(message);
+      break;
+    case 'chain':
+      if (!chainCommands) {
+        await message.reply('Chain scheduling is not initialized yet. Try again shortly.');
+        break;
+      }
+      {
+        const sub = (rest || '').trim().split(/\s+/)[0].toLowerCase();
+        if (sub === 'join') {
+          if (!permissions.requireAccess(message, message.author.id, 'member')) break;
+          await chainCommands.handleJoin(message);
+        } else if (sub === 'leave') {
+          if (!permissions.requireAccess(message, message.author.id, 'member')) break;
+          await chainCommands.handleLeave(message);
+        } else if (sub === 'list') {
+          if (!permissions.requireAccess(message, message.author.id, 'officer')) break;
+          await chainCommands.handleList(message);
+        } else if (sub === 'cancel') {
+          if (!permissions.requireAccess(message, message.author.id, 'officer')) break;
+          await chainCommands.handleCancel(message);
+        } else {
+          if (!permissions.requireAccess(message, message.author.id, 'officer')) break;
+          await chainCommands.handleChain(message, rest);
+        }
+      }
       break;
     case 'armory':
       if (!permissions.requireAccess(message, message.author.id, 'member')) break;
