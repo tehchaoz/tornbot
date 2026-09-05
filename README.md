@@ -98,15 +98,21 @@ Log into your Torn account → Preferences → API → create a key. For the ful
 faction feature set, use a key with **Full Access** (ideally held by your
 faction's leader or a Full Access member).
 
-### Optional: FFScouter target finder
+### Required: FFScouter registration (for `!target` / `!target ff`)
 
-`!target` and `!target ff` can pull pre-filtered attack targets from
-[FFScouter](https://ffscouter.com) (fair fight 2–3, inactive 14d+). Each
-member's own linked key is used when it is registered with FFScouter (so fair
-fight is relative to their own stats); unregistered members fall back to
-`FFSCOUTER_API_KEY` if set, otherwise the bot owner key. Unregistered or
-rate-limited keys are skipped silently, so nothing breaks if you never set
-this up.
+`!target` and `!target ff` rely **solely** on
+[FFScouter](https://ffscouter.com) for the automatic candidate pool — there is
+**no fallback key**. Before using them, each member must:
+
+1. Link their Torn key with the bot: `!torn setup <your-api-key>`
+2. Register that **same key** on [ffscouter.com](https://ffscouter.com) (log in
+   with your Torn account and add the API key). Fair fight is then relative to
+   that member's own stats.
+
+Members without a registered key get a clear "register on FFScouter" message;
+they can still use the personal tools (`!target add <id>` / `!target skip <id>`
+/ `!target scan <id>`) and everything else in the bot. `!target` accepts manual
+IDs so the feature works even with FFScouter down.
 
 ## 3. Configure
 
@@ -122,7 +128,6 @@ Key variables:
 | `DISCORD_TOKEN` | Your bot token (required) |
 | `TORN_API_KEY` | Your Torn API key (required) |
 | `TORN_API_KEY_2` | Optional second Torn API key (rate limits / extra scope) |
-| `FFSCOUTER_API_KEY` | Optional — a Torn key registered at ffscouter.com; fallback for `!target ff` when a member hasn't registered their own |
 | `FACTION_ID` | Your faction's numeric ID (required for faction features) |
 | `BOARD_CHANNEL_IDS` | Channel(s) for the price board, comma-separated |
 | `CHAIN_CHANNEL_ID` | Channel for chain-monitoring alerts |
