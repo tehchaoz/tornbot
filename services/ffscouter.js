@@ -81,13 +81,13 @@ async function findTargets({ key, preset, minLevel, maxLevel, inactiveOnly, minF
   const j = await request('/get-targets', {
     key,
     preset: preset || null,
-    minlevel: minLevel || null,
-    maxlevel: maxLevel || null,
-    inactiveonly: inactiveOnly || null,
-    minff: minFf || null,
-    maxff: maxFf || null,
-    factionless: factionless || null,
-    limit: limit || 20,
+    minlevel: minLevel == null ? null : minLevel,
+    maxlevel: maxLevel == null ? null : maxLevel,
+    inactiveonly: inactiveOnly == null ? null : inactiveOnly,
+    minff: minFf == null ? null : minFf,
+    maxff: maxFf == null ? null : maxFf,
+    factionless: factionless == null ? null : factionless,
+    limit: limit == null ? null : limit,
   }, { ttl: CACHE_TTL_MS });
   return Array.isArray(j.targets) ? j.targets : [];
 }

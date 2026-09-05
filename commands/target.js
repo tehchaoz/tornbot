@@ -1,6 +1,6 @@
 const accountStore = require('../services/account-store');
 const { tornGet } = require('../services/torn-api');
-const { findTargets } = require('../services/ffscouter');
+const { findTargets, getStats } = require('../services/ffscouter');
 
 const FACTION_ID = process.env.FACTION_ID || '';
 const OWNER_KEY = process.env.TORN_API_KEY || '';
@@ -14,7 +14,7 @@ const BALDR_CACHE_TTL = 6 * 60 * 60 * 1000;
 const BALDR_CAP = 12;
 const FFSCOUTER_CAP = 8;
 
-const ATTACKABLE = new Set(['OK', 'Idle']);
+const ATTACKABLE = new Set(['OK', 'Idle', 'Okay']);
 
 let baldrCache = null;
 let baldrCacheAt = 0;
@@ -233,13 +233,13 @@ function pickBaldrCandidates(baldr, self, limit) {
 
 async function inspectCandidate(id, apiKey) {
   try {
-    const d = await tornGet('user', id, 'profile,battlestats,bars', 1, apiKey, { cacheTtl: 120, retries: 1 });
+    const d = await tornGet('user', id, 'profile', 1, apiKey, { cacheTtl: 120, retries: 1 });
     if (!d || !d.player_id) return null;
     return {
       id: String(d.player_id),
       name: d.name || String(id),
       level: d.level || 0,
-      total: totalStats(d),
+      total: d.total != null ? d.total : null,
       status: d.status || {},
       life: (d.life && d.life.current) || 0,
       faction: (d.faction && d.faction.faction_id) || null,
@@ -248,6 +248,30 @@ async function inspectCandidate(id, apiKey) {
   } catch (e) {
     return null;
   }
+}
+
+const ffEnrichCache = new Map();
+async function enrichWithFf(ids) {
+  const missing = Array.from(new Set(ids.map(String))).filter((id) => !ffEnrichCache.has(id));
+  const key = process.env.FFSCOUTER_API_KEY || OWNER_KEY;
+  if (missing.length && key) {
+    try {
+      for (let i = 0; i < missing.length; i += 100) {
+        const chunk = missing.slice(i, i + 100);
+        const rows = await getStats({ key, targets: chunk });
+        if (Array.isArray(rows)) {
+          for (const r of rows) {
+            if (r && r.player_id) ffEnrichCache.set(String(r.player_id), r);
+          }
+        }
+      }
+    } catch (e) {
+      console.log('[target] ff enrichment unavailable:', e.message);
+    }
+  }
+  const out = {};
+  for (const id of new Set(ids.map(String))) out[id] = ffEnrichCache.get(id) || null;
+  return out;
 }
 
 async function buildCandidates(userId, apiKey, self, extraIds) {
@@ -292,7 +316,14 @@ async function buildCandidates(userId, apiKey, self, extraIds) {
 
   let ffCount = 0;
   try {
-    const { targets: ff } = await tryFindFfTargets(apiKey, { preset: 'respect', limit: FFSCOUTER_CAP });
+    const { targets: ff } = await tryFindFfTargets(apiKey, {
+      minLevel: Math.max(1, self.level - 3),
+      maxLevel: Math.min(100, self.level + 25),
+      minFf: 1.25,
+      maxFf: 2.95,
+      inactiveOnly: 0,
+      limit: FFSCOUTER_CAP,
+    });
     const clean = ff.filter((t) => !t.hospital_until || t.hospital_until < Date.now() / 1000);
     addFrom(clean, 'ffscouter', { ffScouter: true });
     ffCount = clean.length;
@@ -303,27 +334,38 @@ async function buildCandidates(userId, apiKey, self, extraIds) {
   return { candidates: sources, factionCount: factionIds.length, ownCount: ownIds.length, baldrCount, ffCount };
 }
 
+const BORDERLINE_FF = 1.5;
+
 function rankCandidates(inspected, self, skipIds) {
   const skipSet = new Set(skipIds || []);
   const good = [];
-  const skipped = { hospital: [], higher: [], band: [], faction: [], skippedList: [], dead: [] };
+  const skipped = { hospital: [], higher: [], band: [], faction: [], skippedList: [], dead: [], unknown: [] };
 
   for (const c of inspected) {
     const state = c.status.state || '';
 
     if (skipSet.has(c.id)) { skipped.skippedList.push(c); continue; }
     if (c.faction && String(c.faction) === String(FACTION_ID)) { skipped.faction.push(c); continue; }
-    if (state !== 'OK' && state !== 'Idle') {
+    if (!ATTACKABLE.has(state)) {
       const bucket = state === 'Hospital' ? 'hospital' : 'dead';
       skipped[bucket] && skipped[bucket].push(c);
       continue;
     }
     if (!c.baldr && !c.ffScouter && Math.abs(c.level - self.level) > LEVEL_BAND) { skipped.band.push(c); continue; }
     if ((c.baldr || c.ffScouter) && Math.abs(c.level - self.level) > BALDR_MAX_LEVEL_GAP) { skipped.band.push(c); continue; }
-    if (self.total != null && c.total != null && c.total >= self.total) { skipped.higher.push(c); continue; }
 
-    const ratio = self.total && c.total ? self.total / Math.max(1, c.total) : 99;
-    c.score = ratio + (self.level - c.level) * 0.1;
+    const ff = c.ff != null ? Number(c.ff) : null;
+    const ffEasy = ff != null && ff < BORDERLINE_FF;
+    const totalEasy = self.total != null && c.total != null && c.total < self.total;
+    const knownStronger = ff != null && ff >= BORDERLINE_FF;
+
+    if (!ffEasy && !totalEasy) {
+      if (knownStronger || c.total != null) { skipped.higher.push(c); continue; }
+      skipped.unknown.push(c);
+      continue;
+    }
+
+    c.score = ff != null ? 1 / (ff + 0.05) : (self.total / Math.max(1, c.total) + (self.level - c.level) * 0.1);
     good.push(c);
   }
 
@@ -336,7 +378,7 @@ function findClosest(inspected, self, skipIds, limit) {
   const pool = inspected.filter(
     (c) => !skipSet.has(c.id)
       && !(c.faction && String(c.faction) === String(FACTION_ID))
-      && (c.status.state === 'OK' || c.status.state === 'Idle')
+      && ATTACKABLE.has(c.status.state)
   );
   pool.sort((a, b) => Math.abs(a.level - self.level) - Math.abs(b.level - self.level));
   return pool.slice(0, limit).map((c) => {
@@ -409,6 +451,8 @@ async function handleTarget(message, args) {
         const c = await inspectCandidate(id, apiKey);
         if (c) inspected.push(c);
       }
+      const ffMap = await enrichWithFf(inspected.map((c) => c.id));
+      for (const c of inspected) { const r = ffMap[c.id]; c.ff = r ? r.fair_fight : null; c.ffEst = r ? r.bs_estimate_human : null; }
 const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).skip);
       const lines = [`**Target scan** — you: Lv${self.level}, ${fmt(self.total)} total`];
       if (good.length) {
@@ -437,7 +481,7 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
       await message.reply(
         '**!target** — find easy kills near your level.\n' +
         '`!target` — scan faction/your recent attack logs + whitelist + Baldr\'s list + FFScouter.\n' +
-        '`!target ff [n]` — pull pre-filtered targets from FFScouter (fair fight 2-3, inactive).\n' +
+        '`!target ff [n]` — pull beatable targets from FFScouter (FF 1.25-3, live-checked like the browser finder).\n' +
         '`!target closest` — show nearest-by-level candidates even if they are stronger.\n' +
         '`!target add <id...>` — add players to your pool.\n' +
         '`!target skip <id...>` — never suggest these.\n' +
@@ -458,10 +502,25 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
     const self = await fetchSelf(userId, apiKey);
     let ff = [];
     let usedKey = apiKey;
+    const ffParams = (limit, inactive) => ({
+      minLevel: Math.max(1, self.level - 3),
+      maxLevel: Math.min(100, self.level + 25),
+      minFf: 1.25,
+      maxFf: 2.95,
+      inactiveOnly: inactive ? 1 : 0,
+      limit,
+    });
     try {
-      const r = await tryFindFfTargets(apiKey, { preset: 'respect', limit: count });
-      ff = r.targets;
-      usedKey = r.key;
+      const first = await tryFindFfTargets(apiKey, ffParams(50, false));
+      ff = first.targets;
+      usedKey = first.key;
+      if (ff.length < 6) {
+        const second = await tryFindFfTargets(apiKey, ffParams(50, true));
+        const seenIds = new Set(ff.map((t) => String(t.player_id)));
+        for (const t of second.targets) {
+          if (!seenIds.has(String(t.player_id))) { ff.push(t); seenIds.add(String(t.player_id)); }
+        }
+      }
     } catch (e) {
       const lines = ['\u{1F527} **FFScouter** \u2014 lookup failed'];
       lines.push(e.code === 6
@@ -472,25 +531,45 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
       return;
     }
     const skip = new Set(getTargetList(userId).skip);
-    const lines = [`\u{1F527} **FFScouter targets for ${self.name}** (Lv${self.level}, ${fmt(self.total)} total)`];
-    lines.push('Fair fight 2.00\u20133.00, inactive 14d+, FFScouter estimates live-checked against Torn:');
-    if (usedKey !== apiKey) lines.push(`(fallback key used \u2014 fair fight relative to its owner)`);
-    let shown = 0;
+    const rows = [];
+    const seen = new Set();
+    let checked = 0;
+    const MAX_FF_INSPECT = 30;
     for (const t of ff) {
+      if (checked >= MAX_FF_INSPECT) break;
       if (t.hospital_until && t.hospital_until > Date.now() / 1000) continue;
+      if (seen.has(t.player_id)) continue;
+      seen.add(t.player_id);
       const c = await inspectCandidate(t.player_id, apiKey);
+      checked++;
       if (!c) continue;
       if (skip.has(c.id)) continue;
       if (c.faction && String(c.faction) === String(FACTION_ID)) continue;
-      if (c.status.state !== 'OK' && c.status.state !== 'Idle') continue;
-      lines.push(
-        `${shown + 1}. **${c.name}** [${c.id}] \u00B7 Lv${c.level} \u00B7 ${fmt(c.total)} total${c.life ? ' \u00B7 ' + fmt(c.life) + ' life' : ''} \u00B7 FF ${t.fair_fight} \u00B7 est ${t.bs_estimate_human}\n   \u2113ink: https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
-      );
-      shown++;
-      if (shown >= count) break;
+      if (!ATTACKABLE.has(c.status.state)) continue;
+      rows.push({ t, c });
+      if (rows.length >= count) break;
     }
-    if (!shown) lines.push('No confirmed attackable targets returned right now \u2014 try again in a few minutes.');
-    lines.push('`!target scan <id>` live-checks any one; `!target add <id>` pools it.');
+    rows.sort((a, b) => (a.t.fair_fight ?? 99) - (b.t.fair_fight ?? 99));
+    const lines = [`\u{1F527} **FFScouter targets for ${self.name}** (Lv${self.level}, ${fmt(self.total)} total)`];
+    lines.push('FF ~1.0\u20132.95 around your level (\u00B125, active + inactive) \u2014 live-checked against Torn like the extension\u2019s finder, weakest FF first:');
+    if (usedKey !== apiKey) lines.push('(fallback key used \u2014 fair fight relative to its owner)');
+    rows.slice(0, count).forEach(({ t, c }, i) => {
+      const details = [
+        `Lv${c.level}`,
+        c.total != null ? `${fmt(c.total)} total` : (t.bs_estimate_human ? `est ${t.bs_estimate_human}` : 'est \u2014'),
+        `${c.status.state}`,
+        `${c.life ? fmt(c.life) + ' life' : ''}`.trim(),
+        `FF ${t.fair_fight}`,
+      ].filter(Boolean).join(' \u00B7 ');
+      lines.push(
+        `${i + 1}. **${c.name}** [${c.id}] \u00B7 ${details}\n   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
+      );
+    });
+    if (!rows.length) {
+      lines.push(`No live attackable targets in ${checked} FFScouter candidates \u2014 nobody \u201cOkay\u201d right now. Try again shortly or \`!target scan <id>\`.`);
+    }
+    if (ff.length > checked) lines.push(`(${ff.length - checked} more candidates not checked \u2014 run \`!target ff ${count + 5}\` next time)`);
+    lines.push('`!target add <id>` keeps keepers; `!target` folds FFScouter in with your other sources.');
     await reply.edit(lines.join('\n'));
     return;
   }
@@ -510,6 +589,8 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
       const c = await inspectCandidate(id, apiKey);
       if (c) { c.baldr = baldrSet.has(c.id); c.ffScouter = ffSet.has(c.id); inspected.push(c); }
     }
+    const ffMap = await enrichWithFf(inspected.map((c) => c.id));
+    for (const c of inspected) { const r = ffMap[c.id]; c.ff = r ? r.fair_fight : null; c.ffEst = r ? r.bs_estimate_human : null; }
     const closest = findClosest(inspected, self, getTargetList(userId).skip, count);
     const lines = [`\u{1F3AF} **Closest targets for ${self.name}** (Lv${self.level}, ${fmt(self.total)} total)`];
     if (closest.length) {
@@ -554,12 +635,14 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
     for (const id of capped) {
       try { const c = await inspectCandidate(id, apiKey); if (c) inspected.push(c); } catch (e) {}
     }
+    const ffMap = await enrichWithFf(inspected.map((c) => c.id));
+    for (const c of inspected) { const r = ffMap[c.id]; c.ff = r ? r.fair_fight : null; c.ffEst = r ? r.bs_estimate_human : null; }
     for (const c of inspected) {
       const dist = Math.abs(c.level - self.level);
       const distOk = c.level <= self.level + gap;
       if (!distOk) continue;
       if (c.faction && String(c.faction) === String(FACTION_ID)) continue;
-      if (c.status.state !== 'OK' && c.status.state !== 'Idle') continue;
+      if (!ATTACKABLE.has(c.status.state)) continue;
       const stronger = c.total != null && self.total != null && c.total >= self.total;
       inRange.push({ c, dist, stronger });
     }
@@ -599,6 +682,8 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
     const c = await inspectCandidate(id, apiKey);
     if (c) { c.baldr = baldrSet.has(c.id); c.ffScouter = ffSet.has(c.id); inspected.push(c); }
   }
+  const ffMap = await enrichWithFf(inspected.map((c) => c.id));
+  for (const c of inspected) { const r = ffMap[c.id]; c.ff = r ? r.fair_fight : null; c.ffEst = r ? r.bs_estimate_human : null; }
 
   const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).skip);
 
@@ -609,7 +694,7 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
     lines.push(`Found **${good.length}** attackable with lower stats:`);
     good.slice(0, count).forEach((c, i) => {
       lines.push(
-        `${i + 1}. **${c.name}** [${c.id}] \u00B7 Lv${c.level} \u00B7 ${fmt(c.total)} total \u00B7 ${c.status.state}${c.life ? ' \u00B7 ' + fmt(c.life) + ' life' : ''}\n   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
+        `${i + 1}. **${c.name}** [${c.id}] \u00B7 Lv${c.level} \u00B7 ${fmt(c.total)} total${c.life ? ' \u00B7 ' + fmt(c.life) + ' life' : ''}${c.ff != null ? ' \u00B7 FF ' + c.ff : ''}\n   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
       );
     });
   } else {
@@ -623,14 +708,14 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
       });
       lines.push('These are *not* confirmed easy \u2014 you gain XP by attacking while **Leave**ing. Re-run `!target` as you level.');
       if (skipped.hospital.length || skipped.higher.length || skipped.band.length) {
-        lines.push(`Skipped: ${skipped.hospital.length} in hospital, ${skipped.higher.length} with higher stats, ${skipped.band.length} out of level band, ${skipped.faction.length} faction mates, ${skipped.skippedList.length} on your skip list.`);
+lines.push(`Skipped: ${skipped.hospital.length} in hospital, ${skipped.higher.length} with higher stats, ${skipped.band.length} out of level band, ${skipped.faction.length} faction mates, ${skipped.skippedList.length} on your skip list, ${skipped.unknown.length} with stats unknown.`);
       }
       await reply.edit(lines.join('\n'));
       return;
     }
     lines.push('No easy targets found \u2014 everyone in your pool is stronger, hospitalized, or out of your level band.');
   }
-  if (skipped.hospital.length) lines.push(`Skipped: ${skipped.hospital.length} in hospital, ${skipped.higher.length} with higher stats, ${skipped.band.length} out of level band, ${skipped.faction.length} faction mates, ${skipped.skippedList.length} on your skip list.`);
+  if (skipped.hospital.length) lines.push(`Skipped: ${skipped.hospital.length} in hospital, ${skipped.higher.length} with higher stats, ${skipped.band.length} out of level band, ${skipped.faction.length} faction mates, ${skipped.skippedList.length} on your skip list, ${skipped.unknown.length} with stats unknown.`);
   lines.push('`!target add <id>` / `!target skip <id>` / `!target help`');
   await reply.edit(lines.join('\n'));
 }
