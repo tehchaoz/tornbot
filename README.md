@@ -98,6 +98,15 @@ Log into your Torn account → Preferences → API → create a key. For the ful
 faction feature set, use a key with **Full Access** (ideally held by your
 faction's leader or a Full Access member).
 
+### Optional: FFScouter target finder
+
+`!target` and `!target ff` can pull pre-filtered attack targets from
+[FFScouter](https://ffscouter.com) (fair fight 2–3, inactive 14d+). This
+source turns on automatically once **any API key the bot holds is registered
+with FFScouter** — e.g. register your `TORN_API_KEY` at ffscouter.com →
+API Keys (`TORN_API_KEY_2` works too). Unregistered or rate-limited keys are
+skipped silently, so nothing breaks if you never set this up.
+
 ## 3. Configure
 
 ```bash
@@ -255,7 +264,7 @@ polls stay within the 100 req/min-per-account limit.
 | Command | What it does |
 |---|---|
 | `!hj` / `!hj guide` | Happy jump helper (energy, happy, drug/booster cooldowns) |
-| `!target` | Find easy kills (add / skip / scan / lists) |
+| `!target` | Find easy kills (add / skip / scan / lists / **ff** — FFScouter targets if enabled) |
 | `!medals` / `!medals next` | Medals earned + next |
 | `!calendar` | Upcoming game events |
 | `!dirtybombs` | Recent dirty bomb events |
