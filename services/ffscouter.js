@@ -3,7 +3,7 @@ const fetch = globalThis.fetch;
 const BASE = 'https://ffscouter.com/api/v1';
 const RATE_LIMIT_PER_MINUTE = 5;
 const CACHE_TTL_MS = 90 * 1000;
-const NOT_REGISTERED_TTL_MS = 30 * 60 * 1000;
+const NOT_REGISTERED_TTL_MS = 5 * 60 * 1000;
 
 const cache = new Map();
 const rateWindow = [];
