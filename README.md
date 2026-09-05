@@ -101,11 +101,12 @@ faction's leader or a Full Access member).
 ### Optional: FFScouter target finder
 
 `!target` and `!target ff` can pull pre-filtered attack targets from
-[FFScouter](https://ffscouter.com) (fair fight 2–3, inactive 14d+). This
-source turns on automatically once **any API key the bot holds is registered
-with FFScouter** — e.g. register your `TORN_API_KEY` at ffscouter.com →
-API Keys (`TORN_API_KEY_2` works too). Unregistered or rate-limited keys are
-skipped silently, so nothing breaks if you never set this up.
+[FFScouter](https://ffscouter.com) (fair fight 2–3, inactive 14d+). Each
+member's own linked key is used when it is registered with FFScouter (so fair
+fight is relative to their own stats); unregistered members fall back to
+`FFSCOUTER_API_KEY` if set, otherwise the bot owner key. Unregistered or
+rate-limited keys are skipped silently, so nothing breaks if you never set
+this up.
 
 ## 3. Configure
 
@@ -120,6 +121,8 @@ Key variables:
 |---|---|
 | `DISCORD_TOKEN` | Your bot token (required) |
 | `TORN_API_KEY` | Your Torn API key (required) |
+| `TORN_API_KEY_2` | Optional second Torn API key (rate limits / extra scope) |
+| `FFSCOUTER_API_KEY` | Optional — a Torn key registered at ffscouter.com; fallback for `!target ff` when a member hasn't registered their own |
 | `FACTION_ID` | Your faction's numeric ID (required for faction features) |
 | `BOARD_CHANNEL_IDS` | Channel(s) for the price board, comma-separated |
 | `CHAIN_CHANNEL_ID` | Channel for chain-monitoring alerts |

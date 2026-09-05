@@ -65,6 +65,21 @@ async function resolveApiKey(discordUserId) {
   return { account, apiKey: key || OWNER_KEY };
 }
 
+async function tryFindFfTargets(primaryKey, params) {
+  try {
+    const targets = await findTargets({ key: primaryKey, ...params });
+    return { targets, key: primaryKey };
+  } catch (e) {
+    if (e.code !== 6) throw e;
+  }
+  const fallbackKey = process.env.FFSCOUTER_API_KEY || OWNER_KEY;
+  if (!fallbackKey || fallbackKey === primaryKey) {
+    throw Object.assign(new Error('FFScouter has no registered key on file'), { code: 6 });
+  }
+  const targets = await findTargets({ key: fallbackKey, ...params });
+  return { targets, key: fallbackKey };
+}
+
 const FULL_KEY_IDENTIFIERS = ['drfruit', 'dr fruit', 'd.r.fruit'];
 let cachedFactionKey = null;
 
@@ -277,7 +292,7 @@ async function buildCandidates(userId, apiKey, self, extraIds) {
 
   let ffCount = 0;
   try {
-    const ff = await findTargets({ key: apiKey, preset: 'respect', limit: FFSCOUTER_CAP });
+    const { targets: ff } = await tryFindFfTargets(apiKey, { preset: 'respect', limit: FFSCOUTER_CAP });
     const clean = ff.filter((t) => !t.hospital_until || t.hospital_until < Date.now() / 1000);
     addFrom(clean, 'ffscouter', { ffScouter: true });
     ffCount = clean.length;
@@ -442,12 +457,15 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
     const { account, apiKey } = await resolveApiKey(userId);
     const self = await fetchSelf(userId, apiKey);
     let ff = [];
+    let usedKey = apiKey;
     try {
-      ff = await findTargets({ key: apiKey, preset: 'respect', limit: count });
+      const r = await tryFindFfTargets(apiKey, { preset: 'respect', limit: count });
+      ff = r.targets;
+      usedKey = r.key;
     } catch (e) {
       const lines = ['\u{1F527} **FFScouter** \u2014 lookup failed'];
       lines.push(e.code === 6
-        ? 'No API key registered on ffscouter.com yet (mine or the owner\'s). Register one at https://ffscouter.com \u2192 API Keys, and this source turns on automatically \u2014 no bot restart needed.'
+        ? 'No registered FFScouter key available. Register one at https://ffscouter.com \u2192 API Keys, or set `FFSCOUTER_API_KEY` in .env.'
         : `Error: ${e.message}`);
       lines.push('Meanwhile `!target`, `!target scan` and `!target scrub` still work.');
       await reply.edit(lines.join('\n'));
@@ -456,6 +474,7 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
     const skip = new Set(getTargetList(userId).skip);
     const lines = [`\u{1F527} **FFScouter targets for ${self.name}** (Lv${self.level}, ${fmt(self.total)} total)`];
     lines.push('Fair fight 2.00\u20133.00, inactive 14d+, FFScouter estimates live-checked against Torn:');
+    if (usedKey !== apiKey) lines.push(`(fallback key used \u2014 fair fight relative to its owner)`);
     let shown = 0;
     for (const t of ff) {
       if (t.hospital_until && t.hospital_until > Date.now() / 1000) continue;
@@ -465,7 +484,7 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
       if (c.faction && String(c.faction) === String(FACTION_ID)) continue;
       if (c.status.state !== 'OK' && c.status.state !== 'Idle') continue;
       lines.push(
-        `${shown + 1}. **${c.name}** [${c.id}] \u00B7 Lv${c.level} \u00B7 ${fmt(c.total)} total${c.life ? ' \u00B7 ' + fmt(c.life) + ' life' : ''} \u00B7 FF ${t.fair_fight} \u00B7 est ${t.bs_estimate_human}\n   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
+        `${shown + 1}. **${c.name}** [${c.id}] \u00B7 Lv${c.level} \u00B7 ${fmt(c.total)} total${c.life ? ' \u00B7 ' + fmt(c.life) + ' life' : ''} \u00B7 FF ${t.fair_fight} \u00B7 est ${t.bs_estimate_human}\n   \u2113ink: https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
       );
       shown++;
       if (shown >= count) break;
@@ -616,4 +635,4 @@ const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).
   await reply.edit(lines.join('\n'));
 }
 
-module.exports = { handleTarget };
+module.exports = { handleTarget, tryFindFfTargets };
