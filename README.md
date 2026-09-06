@@ -214,7 +214,7 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 | `!baldr <name>` \| `!baldr list <level>` \| `!baldr scan <id>` | Search Baldr's full levelling list |
 | `!known <name>` / `!known sync` | Everyone the bot has ever seen |
 | `!finances` | Faction bank balance + member balances |
-| `!bank balance` / `!bank req <amount> [reason]` | Faction vault |
+| `!bank balance` / `!bank req <amount> [reason]` | Your share of the faction vault + vault requests |
 | `!armory` | Faction armory inventory (weapons / armor / drugs) |
 | `!territory` | Faction territory |
 | `!wars` | Faction wars (ranked / raids / territory) |

@@ -95,14 +95,27 @@ function createFactionFeatures(ctx) {
     if (cmd === 'balance') {
       try {
         const d = await factionGet('balance', 2);
-        const faction = d && d.balance && d.balance.faction;
-        const money = faction ? faction.money : null;
-        const points = faction ? faction.points : 0;
-        if (money == null) {
-          await message.reply('Vault balance unavailable \u2014 couldn\'t read the faction balance.');
+        const balance = d && d.balance;
+        const members = balance && balance.members ? balance.members : null;
+
+        const uid = message.author.id;
+        let tornId = null;
+        try {
+          const acc = accountStore.getAccount(uid);
+          if (acc && acc.tornPlayerId) tornId = String(acc.tornPlayerId);
+        } catch (e) { /* fall through */ }
+        if (!tornId && links[uid]) tornId = String(links[uid]);
+
+        const mine = (tornId && members)
+          ? members.find((m) => m && String(m.id) === tornId) || null
+          : null;
+
+        if (!mine || mine.money == null) {
+          await message.reply('Couldn\u2019t find your share of the vault. Link your Torn account with `!torn setup` (or `!link <torn-id>`) first.');
           return;
         }
-        await message.reply(`\u{1F4B0} **Faction vault**: \$${fmtMoney(money)}${points ? ` \u00B7 ${points} points` : ''}`);
+        const points = mine.points || 0;
+        await message.reply(`\u{1F4B0} **Your vault share**: \$${fmtMoney(mine.money)}${points ? ` \u00B7 ${points} points` : ''}`);
       } catch (e) {
         await message.reply(`Bank error: ${e.message}`);
       }
@@ -121,7 +134,7 @@ function createFactionFeatures(ctx) {
       return;
     }
 
-    await message.reply('**!bank**\n`!bank balance` — current faction vault\n`!bank req <amount> [reason]` — request money from the vault');
+    await message.reply('**!bank**\n`!bank balance` — your share of the faction vault\n`!bank req <amount> [reason]` — request money from the vault');
   }
 
   // ---- Retaliation monitor ----
