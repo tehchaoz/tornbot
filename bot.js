@@ -17,6 +17,7 @@ const perksCommands = require('./commands/perks');
 const rosterCommands = require('./commands/roster');
 const factionStatsCommands = require('./commands/faction-stats');
 const economyCommands = require('./commands/economy');
+const stocksCommands = require('./commands/stocks');
 const personalStatsCommands = require('./commands/personal-stats');
 const eventsInfoCommands = require('./commands/events-info');
 const knownCommands = require('./commands/known');
@@ -167,7 +168,7 @@ const INTERVIEW = {
 const TORN_GUILD_ID = process.env.GUILD_ID || '';
 
 
-const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image', 'pray'];
+const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'stocks', 'stockforecast', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image', 'pray'];
 
 const TORN_HELP_PUBLIC =
   '**Torn** — Public Commands\n' +
@@ -177,6 +178,8 @@ const TORN_HELP_PUBLIC =
   '`!prices <item> [...]` — scan multiple items\n' +
   '`!ph <item>` — price history\n' +
   '`!stock <item>` — Torn City shop stock\n' +
+  '`!stocks` — stock exchange board (top by cap + 30-day forecast chips)\n' +
+  '`!stockforecast <symbol>` — 30-day forecast for one stock\n' +
   '`!travel [country]` — abroad shop stock\n' +
   '`!abroad <item>` — which countries have an item\n' +
   '`!members` — member status board (with timezone where known)\n' +
@@ -467,6 +470,12 @@ async function handleCommand(message) {
       break;
     case 'stock':
       await handleStock(message, rest);
+      break;
+    case 'stocks':
+      await stocksCommands.handleStocks(message);
+      break;
+    case 'stockforecast':
+      await stocksCommands.handleStockForecast(message, rest);
       break;
     case 'travel':
       await handleTravel(message, rest);
