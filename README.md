@@ -128,14 +128,15 @@ Key variables:
 | `DISCORD_TOKEN` | Your bot token (required) |
 | `TORN_API_KEY` | Your Torn API key (required) |
 | `TORN_API_KEY_2` | Optional second Torn API key (rate limits / extra scope) |
+| `PRICE_API_KEYS` | Optional comma/space-separated keys authorized for the price board ONLY. Each key gets its own timer that pings the full board every `PRICE_POLL_INTERVAL` (default 40s), staggered evenly — so N keys refresh the board every 40/N seconds. Adding a key = fresher board. Falls back to per-user registered keys (one per Torn account), then the env keys |
 | `FACTION_ID` | Your faction's numeric ID (required for faction features) |
 | `BOARD_CHANNEL_IDS` | Channel(s) for the price board, comma-separated |
 | `CHAIN_CHANNEL_ID` | Channel for chain-monitoring alerts |
 | `MEMBER_INTRO_CHANNEL_ID` | `#member-intro` channel — the bot reads the timezone roster posted there and shows it in `!members` |
 | `MEMBER_BOARD_CHANNEL_ID` | Channel for the pinned auto-updating `!members` board (defaults to `MEMBER_INTRO_CHANNEL_ID`) |
 | `MEMBER_BOARD_INTERVAL` | Seconds between members-board refreshes (default 300; piggybacks the price cycle) |
-| `PRICE_BOARD_INTERVAL` | Seconds between price-board Discord edits (default 10). The watchlist is spread across every per-user Torn account — each account pings its own slice once per cycle, offset evenly |
-| `PRICE_POLL_INTERVAL` | Seconds between each account's Torn poll of its watchlist slice (default 10). Lower = fresher prices but closer to the 100 req/min-per-account limit |
+| `PRICE_BOARD_INTERVAL` | Seconds between price-board Discord edits (default 10). Only controls how often the board is re-rendered, not Torn polling |
+| `PRICE_POLL_INTERVAL` | Seconds between EACH price-board key's full-board ping (default 40). Keys are staggered evenly, so the whole board refreshes every cycle/N seconds. Lower = fresher prices but closer to the 100 req/min-per-account limit |
 | `PREFIX` | Command prefix (default `!`) |
 | `TORN_ENCRYPTION_KEY` | 64-char hex key used to encrypt stored member data — set your own |
 | `GUILD_ID` | Your Discord server ID (restricts rate-limited commands to one server) |

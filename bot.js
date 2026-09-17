@@ -2351,17 +2351,32 @@ async function ensureDefaultWatchlist() {
   }
 }
 
-// Price-board API keys: one key per Torn account (torn_player_id), deduped.
-// Torn's limit is 100 req/min *per user across all of their keys*, so a second
-// key for the same account buys nothing — it just double-taxes one account. We
-// use the per-user account keys (not the env full-access key, which is already
-// busy running faction monitors) so the watchlist spreads evenly across accounts.
+// Price-board API keys: EVERY provided key gets its own timer that pings the FULL
+// board once every PRICE_POLL_INTERVAL seconds (default 40), staggered evenly so
+// N keys refresh the whole board every interval/N seconds. Adding a key to
+// PRICE_API_KEYS therefore refreshes the board more often. Keys are deduped;
+// fall back to per-user registered keys (one per Torn account), then env keys.
 let boardKeys = [];
 
+function parsePriceKeys(raw) {
+  return (raw || '').split(/[\s,]+/).map((s) => (s || '').trim()).filter((k) => k && k.length > 10);
+}
+
 function buildBoardKeys() {
-  const seenAccount = new Set();
   const seenKey = new Set();
   const pool = [];
+  const push = (k) => {
+    if (k && typeof k === 'string' && k.length > 10 && !seenKey.has(k)) {
+      seenKey.add(k);
+      pool.push(k);
+    }
+  };
+  // 1. PRICE_API_KEYS — explicit keys authorized for the price board only.
+  for (const k of parsePriceKeys(process.env.PRICE_API_KEYS)) push(k);
+  if (pool.length) return pool;
+  // 2. Per-user account keys (one per Torn account; Torn's limit is per user
+  //    across their keys, so a second key for one account buys nothing).
+  const seenAccount = new Set();
   for (const acct of accountStore.getAllAccounts()) {
     if (acct.status !== 'active') continue;
     let key = null;
@@ -2369,26 +2384,18 @@ function buildBoardKeys() {
     if (!key || typeof key !== 'string' || key.length <= 10) continue;
     const acctId = String(acct.torn_player_id || '');
     if (acctId && seenAccount.has(acctId)) continue;   // one key per Torn account
-    if (seenKey.has(key)) continue;
-    seenKey.add(key);
+    push(key);
     if (acctId) seenAccount.add(acctId);
-    pool.push(key);
   }
-  // Fallback only if no per-user keys exist — the env keys are the same accounts.
-  if (!pool.length) {
-    for (const k of [TORN_API_KEY, TORN_API_KEY_2]) {
-      if (k && typeof k === 'string' && k.length > 10 && !seenKey.has(k)) {
-        seenKey.add(k);
-        pool.push(k);
-      }
-    }
-  }
+  if (pool.length) return pool;
+  // 3. Env full-access keys (same accounts — last resort).
+  for (const k of [TORN_API_KEY, TORN_API_KEY_2]) push(k);
   return pool;
 }
 
 function pricePollMs() {
   const v = parseInt(process.env.PRICE_POLL_INTERVAL, 10);
-  return Number.isFinite(v) && v > 0 ? v * 1000 : 10000;
+  return Number.isFinite(v) && v > 0 ? v * 1000 : 40000;
 }
 
 async function startPriceWatcher() {
@@ -2398,22 +2405,16 @@ async function startPriceWatcher() {
   const n = boardKeys.length || 1;
   const cycleMs = pricePollMs();
   const offsetMs = Math.round(cycleMs / n);
-  console.log(`[discord-bot] price watcher started (${priceData.watchlist.length} items, ${n} account(s), ${cycleMs / 1000}s cycle, ${offsetMs}ms offset)`);
+  console.log(`[discord-bot] price watcher started (${priceData.watchlist.length} items, ${n} key(s), ${cycleMs / 1000}s/key cycle, ${offsetMs}ms stagger → board refresh every ${(cycleMs / n / 1000).toFixed(1)}s)`);
   boardKeys.forEach((key, i) => {
     const delay = i * offsetMs;
     setTimeout(() => {
-      pollPrices(i, key);
-      setInterval(() => pollPrices(i, key), cycleMs);
+      pollPrices(key);
+      setInterval(() => pollPrices(key), cycleMs);
     }, delay);
   });
   pollInactive();
   setInterval(pollInactive, 300000);
-}
-
-function priceGroup(id, mod = 2) {
-  let s = 0;
-  for (const ch of String(id)) s += ch.charCodeAt(0);
-  return s % mod;
 }
 
 async function handleAlert(message, rest) {
@@ -2667,9 +2668,8 @@ function listingsSig(im, listings) {
   return `${avg}|` + listings.map((l) => `${l.price}:${l.amount}`).sort().join(',');
 }
 
-async function pollPrices(groupIdx = 0, key = TORN_API_KEY) {
-  const n = boardKeys.length || 1;
-  const nowActive = [...priceData.watchlist].filter((id) => priceGroup(id, n) === groupIdx);
+async function pollPrices(key = TORN_API_KEY) {
+  const nowActive = [...priceData.watchlist];
   await Promise.allSettled(nowActive.map(async (id) => {
     try {
       const d = await tornGet('market', id, 'itemmarket', 2, key);
