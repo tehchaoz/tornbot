@@ -6,6 +6,24 @@ const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'tornbot
 
 let db;
 
+const accountListeners = new Set();
+
+// Subscribe to account changes (save/remove). Fired after any mutation so
+// dependents (e.g. the price-board key pool) can rebuild without a restart.
+function onAccountChange(fn) {
+  accountListeners.add(fn);
+}
+
+function notifyAccountChanged() {
+  for (const fn of accountListeners) {
+    try {
+      fn();
+    } catch (e) {
+      console.error('[account-store] account-change listener failed:', e.message);
+    }
+  }
+}
+
 function init() {
   db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
@@ -97,10 +115,13 @@ function saveAccount(discordUserId, tornPlayerId, tornUsername, apiKey) {
       last_validated_at = excluded.last_validated_at,
       status = 'active'
   `).run(discordUserId, tornPlayerId, tornUsername, encrypted, iv, authTag, now, now, now);
+  notifyAccountChanged();
 }
 
 function removeAccount(discordUserId) {
-  db.prepare('UPDATE torn_accounts SET status = ? WHERE discord_user_id = ?').run('removed', discordUserId);
+  // Hard delete: destroy the ciphertext so the key cannot be recovered from the DB.
+  db.prepare('DELETE FROM torn_accounts WHERE discord_user_id = ?').run(discordUserId);
+  notifyAccountChanged();
 }
 
 function getPreferences(discordUserId) {
@@ -154,4 +175,5 @@ module.exports = {
   getPreferences,
   updatePreferences,
   getAllAccounts,
+  onAccountChange,
 };

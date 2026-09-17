@@ -344,7 +344,7 @@ client.once(Events.ClientReady, (c) => {
   chainCommands.start();
   startChainMonitor();
   startPriceWatcher();
-  setupCommands.setOnAccountChange(() => {
+  accountStore.onAccountChange(() => {
     refreshBoardKeys();
   });
   startWarMonitor();
@@ -391,7 +391,7 @@ client.on(Events.MessageCreate, async (message) => {
     try {
       await handleCommand(message);
     } catch (e) {
-      console.error(`[discord-bot] command error (${message.content.slice(0,40)}): ${e.stack || e.message}`);
+      console.error(`[discord-bot] command error (${message.content.replace(/[A-Za-z0-9]{16,}/g, '[redacted]').slice(0, 60)}): ${e.stack || e.message}`);
       try {
         await message.reply(`\u274C Error running that command: ${e.message}`);
       } catch (_) {}
@@ -399,7 +399,8 @@ client.on(Events.MessageCreate, async (message) => {
     return;
   }
   if (!message.guild) {
-    console.log(`[discord-bot] DM from ${message.author.tag}: ${message.content.slice(0, 60)}`);
+    // Never log DM body content: users paste raw API keys here during !torn setup.
+    console.log(`[discord-bot] DM from ${message.author.tag}: ${message.content.length} chars`);
     try {
       if (setupCommands.isPendingSetup(message.author.id)) {
         await setupCommands.handleDM(message);

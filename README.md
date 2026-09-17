@@ -298,6 +298,15 @@ discord-bot.service     systemd unit example
 ## Security notes
 
 - Your real API keys live **only** in `.env`, which is gitignored.
-- The bot encrypts stored member/Torn credentials with `TORN_ENCRYPTION_KEY`.
-- Keep `.env` permissions restricted on a shared machine (`chmod 600 .env`).
+- The bot encrypts stored member/Torn credentials with `TORN_ENCRYPTION_KEY` (AES-256-GCM,
+  random IV per key + auth tag). The DB stores only ciphertext; decryption happens in memory at
+  runtime and only when the bot makes a Torn API call on that member's behalf.
+- **Honest caveat:** keys are decryptable by whoever controls the server (the process must decrypt
+  them to work). Treat self-hosting this bot as "your users trust you with their keys", not as a
+  zero-trust storage. Use Torn's *scoped* API keys where possible to limit blast radius.
+- **No key logging:** DM bodies are never written to logs (only sender + char count). Command-error
+  logs redact 16+ char tokens. Torn API logs only the last 4 chars of a key for rate-limit health.
+- `!torn disconnect` / `!remove` hard-deletes the encrypted row (ciphertext is destroyed, not soft-deleted).
+- Keep `.env`, `tornbot.db`, and their backups restricted on any shared machine (`chmod 600` on
+  `.env`, `tornbot.db`, and the deploy backups in `deploy/`).
 - GitHub secret scanning + push protection are enabled on this repo.

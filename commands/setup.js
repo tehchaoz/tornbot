@@ -5,20 +5,6 @@ const tzNormalize = require('../services/tz-normalize');
 
 const PENDING_SETUP = new Map();
 
-let onAccountChange = null;
-
-function setOnAccountChange(fn) {
-  onAccountChange = fn;
-}
-
-function notifyAccountChange() {
-  try {
-    if (onAccountChange) onAccountChange();
-  } catch (e) {
-    console.error('[torn-setup] account-change hook failed:', e.message);
-  }
-}
-
 async function handleTornSetup(message) {
   const userId = message.author.id;
   
@@ -129,7 +115,6 @@ try {
     }
 
     accountStore.saveAccount(userId, String(data.player_id), data.name || 'Unknown', key);
-    notifyAccountChange();
     PENDING_SETUP.set(userId, { step: 'awaiting_timezone', startedAt: Date.now() });
 
     const embed = new EmbedBuilder()
@@ -193,7 +178,6 @@ async function handleTornDisconnect(message) {
   }
 
   accountStore.removeAccount(userId);
-  notifyAccountChange();
 
   const embed = new EmbedBuilder()
     .setTitle('Account Disconnected')
@@ -233,4 +217,4 @@ async function handleTornVerify(message) {
   await message.reply({ embeds: [embed] });
 }
 
-module.exports = { handleTornSetup, handleDM, handleTornStatus, handleTornDisconnect, handleTornVerify, isPendingSetup, setOnAccountChange };
+module.exports = { handleTornSetup, handleDM, handleTornStatus, handleTornDisconnect, handleTornVerify, isPendingSetup };
