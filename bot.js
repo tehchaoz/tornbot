@@ -344,6 +344,9 @@ client.once(Events.ClientReady, (c) => {
   chainCommands.start();
   startChainMonitor();
   startPriceWatcher();
+  setupCommands.setOnAccountChange(() => {
+    refreshBoardKeys();
+  });
   startWarMonitor();
   startDailyDigest();
   startDailyGuide();
@@ -2353,10 +2356,13 @@ async function ensureDefaultWatchlist() {
 
 // Price-board API keys: EVERY provided key gets its own timer that pings the FULL
 // board once every PRICE_POLL_INTERVAL seconds (default 40), staggered evenly so
-// N keys refresh the whole board every interval/N seconds. Adding a key to
-// PRICE_API_KEYS therefore refreshes the board more often. Keys are deduped;
-// fall back to per-user registered keys (one per Torn account), then env keys.
+// N keys refresh the whole board every interval/N seconds. Adding a key (via
+// PRICE_API_KEYS or a new `!torn setup`) therefore refreshes the board more often.
+// Keys are deduped; fall back to per-user registered keys (one per Torn account),
+// then env keys. The pool is re-evaluated live whenever accounts change, and the
+// stagger is recomputed to match.
 let boardKeys = [];
+let boardKeyTimers = [];
 
 function parsePriceKeys(raw) {
   return (raw || '').split(/[\s,]+/).map((s) => (s || '').trim()).filter((k) => k && k.length > 10);
@@ -2372,7 +2378,7 @@ function buildBoardKeys() {
     }
   };
   // 1. PRICE_API_KEYS — explicit keys authorized for the price board only.
-  for (const k of parsePriceKeys(process.env.PRICE_API_KEYS)) push(k);
+  for (const k of parsePriceKeys(process.env.PRICE_API_KEYS)) if (k) push(k);
   if (pool.length) return pool;
   // 2. Per-user account keys (one per Torn account; Torn's limit is per user
   //    across their keys, so a second key for one account buys nothing).
@@ -2398,21 +2404,43 @@ function pricePollMs() {
   return Number.isFinite(v) && v > 0 ? v * 1000 : 40000;
 }
 
-async function startPriceWatcher() {
-  loadPrices();
-  await ensureDefaultWatchlist();
-  boardKeys = buildBoardKeys();
+// One full-board poll per key, staggered. Each key pings the whole watchlist once
+// per cycle; key i starts at i*offset so board refresh happens every offset ms.
+function scheduleBoardKeyPolls() {
+  boardKeyTimers.forEach((t) => clearTimeout(t));
+  boardKeyTimers = [];
   const n = boardKeys.length || 1;
   const cycleMs = pricePollMs();
   const offsetMs = Math.round(cycleMs / n);
-  console.log(`[discord-bot] price watcher started (${priceData.watchlist.length} items, ${n} key(s), ${cycleMs / 1000}s/key cycle, ${offsetMs}ms stagger → board refresh every ${(cycleMs / n / 1000).toFixed(1)}s)`);
   boardKeys.forEach((key, i) => {
-    const delay = i * offsetMs;
-    setTimeout(() => {
+    const run = () => {
       pollPrices(key);
-      setInterval(() => pollPrices(key), cycleMs);
-    }, delay);
+      boardKeyTimers[i] = setTimeout(run, cycleMs);
+    };
+    boardKeyTimers[i] = setTimeout(run, i * offsetMs);
   });
+}
+
+// Rebuild the price-board key pool from current accounts (and PRICE_API_KEYS).
+// Returns true when the pool changed so callers can log the new cadence.
+function refreshBoardKeys() {
+  const next = buildBoardKeys();
+  const changed = next.length !== boardKeys.length || next.some((k, i) => k !== boardKeys[i]);
+  boardKeys = next;
+  if (changed) {
+    scheduleBoardKeyPolls();
+    const n = boardKeys.length || 1;
+    const cycleMs = pricePollMs();
+    console.log(`[discord-bot] price board key pool -> ${n} key(s); board refresh every ${(cycleMs / n / 1000).toFixed(1)}s`);
+  }
+  return changed;
+}
+
+async function startPriceWatcher() {
+  loadPrices();
+  await ensureDefaultWatchlist();
+  refreshBoardKeys();
+  console.log(`[discord-bot] price watcher started (${priceData.watchlist.length} items, ${boardKeys.length || 1} key(s), ${pricePollMs() / 1000}s/key cycle → board refresh every ${(pricePollMs() / (boardKeys.length || 1) / 1000).toFixed(1)}s)`);
   pollInactive();
   setInterval(pollInactive, 300000);
 }

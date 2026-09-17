@@ -128,7 +128,7 @@ Key variables:
 | `DISCORD_TOKEN` | Your bot token (required) |
 | `TORN_API_KEY` | Your Torn API key (required) |
 | `TORN_API_KEY_2` | Optional second Torn API key (rate limits / extra scope) |
-| `PRICE_API_KEYS` | Optional comma/space-separated keys authorized for the price board ONLY. Each key gets its own timer that pings the full board every `PRICE_POLL_INTERVAL` (default 40s), staggered evenly — so N keys refresh the board every 40/N seconds. Adding a key = fresher board. Falls back to per-user registered keys (one per Torn account), then the env keys |
+| `PRICE_API_KEYS` | Optional comma/space-separated keys authorized for the price board ONLY. Each key gets its own timer that pings the full board every `PRICE_POLL_INTERVAL` (default 40s), staggered evenly — so N keys refresh the board every 40/N seconds. Adding a key = fresher board. Falls back to per-user registered keys (one per Torn account), then the env keys. Pool is applied **live**: `!torn setup` / `!torn disconnect` add/remove keys and recalculate the stagger instantly — no restart. If set, it wins over member keys |
 | `FACTION_ID` | Your faction's numeric ID (required for faction features) |
 | `BOARD_CHANNEL_IDS` | Channel(s) for the price board, comma-separated |
 | `CHAIN_CHANNEL_ID` | Channel for chain-monitoring alerts |
