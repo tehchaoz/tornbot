@@ -2703,17 +2703,26 @@ async function pollPrices(key = TORN_API_KEY) {
   await maybeRefreshBoardAndAlerts();
 }
 
-// The Discord board + alert DM scan don't need to run once per key — that would
-// spam edits every few seconds. Throttle them to a single cadence per cycle.
+// The Discord board + alert DM scan are throttled to once per data pass (the
+// staggered full-board cadence) so every fresh data pass re-renders the board.
+// An explicit PRICE_BOARD_INTERVAL still overrides this.
 let lastBoardRefresh = 0;
 function boardRefreshMs() {
   const v = parseInt(process.env.PRICE_BOARD_INTERVAL, 10);
-  return Number.isFinite(v) && v > 0 ? v * 1000 : 10000;
+  if (Number.isFinite(v) && v > 0) return v * 1000;
+  const n = boardKeys.length || 1;
+  return Math.max(Math.round(pricePollMs() / n), 2000);
+}
+
+function fmtSecondsBoard(ms) {
+  const s = ms / 1000;
+  if (s >= 10) return `${Math.round(s)}s`;
+  if (s % 1 === 0) return `${Math.round(s)}s`;
+  return `${s.toFixed(1)}s`;
 }
 
 function boardRefreshLabel() {
-  const s = Math.round(boardRefreshMs() / 1000);
-  return s >= 60 && s % 60 === 0 ? `${s / 60}m` : `${s}s`;
+  return fmtSecondsBoard(boardRefreshMs());
 }
 async function maybeRefreshBoardAndAlerts() {
   const now = Date.now();

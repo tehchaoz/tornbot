@@ -135,7 +135,7 @@ Key variables:
 | `MEMBER_INTRO_CHANNEL_ID` | `#member-intro` channel — the bot reads the timezone roster posted there and shows it in `!members` |
 | `MEMBER_BOARD_CHANNEL_ID` | Channel for the pinned auto-updating `!members` board (defaults to `MEMBER_INTRO_CHANNEL_ID`) |
 | `MEMBER_BOARD_INTERVAL` | Seconds between members-board refreshes (default 300; piggybacks the price cycle) |
-| `PRICE_BOARD_INTERVAL` | Seconds between price-board Discord edits (default 10). Only controls how often the board is re-rendered, not Torn polling |
+| `PRICE_BOARD_INTERVAL` | Minimum seconds between price-board Discord edits (blank = auto: once per data pass, i.e. `PRICE_POLL_INTERVAL`/N keys — one re-render per full-board poll). Only controls rendering, not Torn polling |
 | `PRICE_POLL_INTERVAL` | Seconds between EACH price-board key's full-board ping (default 40). Keys are staggered evenly, so the whole board refreshes every cycle/N seconds. Lower = fresher prices but closer to the 100 req/min-per-account limit |
 | `PREFIX` | Command prefix (default `!`) |
 | `TORN_ENCRYPTION_KEY` | 64-char hex key used to encrypt stored member data — set your own |
