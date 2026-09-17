@@ -197,8 +197,9 @@ Type `!help` in any channel the bot can see for the full list. The main commands
 | `!flipcalc <item> <qty> <buy> [sell]` | Profit calculator |
 | `!junk` | List trash/vendor items (Other, Collectible, Unused) |
 | `!stock <item>` | Torn City shop stock |
-| `!stocks` | Stock exchange board (top by market cap + 30-day forecast bias chips) |
-| `!stockforecast <symbol>` | 30-day statistical forecast for one stock (Holt projection, confidence band, backtest hit-rate, 1y sparkline) |
+| `!stocks` | Stock exchange board (top by market cap, best block-1 ROI, 30-day forecast bias chips) |
+| `!stockforecast <symbol>` | Multi-horizon stock report (7d/30d/90d Holt projection, RSI/MACD/trend, support/resistance, block benefit + ROI) |
+| `!stocksuggest [amount]` | Block advisor — best next stock blocks by ROI vs maxed bank APR, uses your wallet/holdings |
 | `!travel [country]` | Abroad shop stock |
 | `!abroad <item>` | Which countries have an item |
 | `!points` | Points market prices |

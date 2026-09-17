@@ -168,7 +168,7 @@ const INTERVIEW = {
 const TORN_GUILD_ID = process.env.GUILD_ID || '';
 
 
-const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'stocks', 'stockforecast', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image', 'pray'];
+const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'stocks', 'stockforecast', 'stocksuggest', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image', 'pray'];
 
 const TORN_HELP_PUBLIC =
   '**Torn** — Public Commands\n' +
@@ -178,8 +178,9 @@ const TORN_HELP_PUBLIC =
   '`!prices <item> [...]` — scan multiple items\n' +
   '`!ph <item>` — price history\n' +
   '`!stock <item>` — Torn City shop stock\n' +
-  '`!stocks` — stock exchange board (top by cap + 30-day forecast chips)\n' +
-  '`!stockforecast <symbol>` — 30-day forecast for one stock\n' +
+  '`!stocks` — stock exchange board (cap, block ROI, 30-day forecast chips)\n' +
+  '`!stockforecast <symbol>` — multi-horizon forecast + technicals + block benefit\n' +
+  '`!stocksuggest [amount]` — best next stock blocks vs bank APR (uses your wallet/holdings)\n' +
   '`!travel [country]` — abroad shop stock\n' +
   '`!abroad <item>` — which countries have an item\n' +
   '`!members` — member status board (with timezone where known)\n' +
@@ -476,6 +477,9 @@ async function handleCommand(message) {
       break;
     case 'stockforecast':
       await stocksCommands.handleStockForecast(message, rest);
+      break;
+    case 'stocksuggest':
+      await stocksCommands.handleStockSuggest(message, rest);
       break;
     case 'travel':
       await handleTravel(message, rest);
