@@ -1857,6 +1857,17 @@ async function handleTimers(message) {
     } else {
       lines.push(`\u{1F393} Course: none running \u2014 start one with a course from *!courses*`);
     }
+    try {
+      const v = await tornGet('user', 'virus', '', 2, apiKey);
+      if (v && v.virus && v.virus.item && v.virus.until) {
+        const left = v.virus.until - Math.floor(Date.now() / 1000);
+        lines.push(`\u{1F9AC} Virus: **${v.virus.item.name}** \u2014 ${fmtTime(left)} left`);
+      } else {
+        lines.push(`\u{1F9AC} Virus: none being coded \u2014 start one from your computer`);
+      }
+    } catch (_) {
+      lines.push(`\u{1F9AC} Virus: unknown (key needs virus access)`);
+    }
     if (d.city_bank && Number(d.city_bank.time_left) > 0) {
       lines.push(`\u{1F4B3} Bank investment: **$${shortMoney(d.city_bank.amount)}** \u2014 ${fmtTime(d.city_bank.time_left)} left`);
     } else {
