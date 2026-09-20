@@ -1861,7 +1861,8 @@ async function handleTimers(message) {
       const v = await tornGet('user', 'virus', '', 2, apiKey);
       if (v && v.virus && v.virus.item && v.virus.until) {
         const left = v.virus.until - Math.floor(Date.now() / 1000);
-        lines.push(`\u{1F9AC} Virus: **${v.virus.item.name}** \u2014 ${fmtTime(left)} left`);
+        const label = left <= 0 ? 'finishing very shortly' : `${fmtTime(left)} left`;
+        lines.push(`\u{1F9AC} Virus: **${v.virus.item.name}** \u2014 ${label}`);
       } else {
         lines.push(`\u{1F9AC} Virus: none being coded \u2014 start one from your computer`);
       }
