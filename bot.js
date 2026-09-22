@@ -168,7 +168,7 @@ const INTERVIEW = {
 const TORN_GUILD_ID = process.env.GUILD_ID || '';
 
 
-const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'stocks', 'stockforecast', 'stocksuggest', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image', 'pray'];
+const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'stocks', 'stockforecast', 'stocksuggest', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'pickpocket', 'pp', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image', 'pray'];
 
 const TORN_HELP_PUBLIC =
   '**Torn** — Public Commands\n' +
@@ -206,6 +206,7 @@ const TORN_HELP_MEMBER =
   '`!alert on|off` — DM when watched items hit a signal\n' +
   '`!timers` — active timers (bars, cooldowns, course, bank)\n' +
   '`!crime-route` — best crime for your level/stats\n' +
+  '`!pickpocket` — best pickpocket marks for your crime skill\n' +
   '`!levelpacer` — time to next level\n' +
   '`!job-apply` — jobs you qualify for + interview\n' +
   '`!jobinfo` — current job, points, ranks\n' +
@@ -540,6 +541,11 @@ async function handleCommand(message) {
     case 'crime-route':
       if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await handleCrimeRoute(message);
+      break;
+    case 'pickpocket':
+    case 'pp':
+      if (!permissions.requireAccess(message, message.author.id, 'member')) break;
+      await handlePickpocket(message);
       break;
     case 'flipcalc':
       await handleFlipCalc(message, args);
@@ -1921,6 +1927,52 @@ async function handleCrimeRoute(message) {
       lines.push(`\u{1F4AA} Push **Nerve Bar + Crime Success** stats first \u2014 they cut fails and stretch every refill.`);
     }
     lines.push(`\u{1F511} Run \u2018!gain\u2019 to time your refills, and re-check this route as you level.`);
+    await reply.edit(lines.join('\n'));
+  } catch (e) {
+    await reply.edit(`Torn error: ${e.message}`);
+  }
+}
+
+const PICKPOCKET_TIERS = [
+  { tier: 'Safe', pct: '~97.5%', gain: '100%', min: 1, marks: ['Drunk man', 'Drunk woman', 'Homeless person', 'Junkie', 'Elderly man', 'Elderly woman'] },
+  { tier: 'Moderately unsafe', pct: '~92.5%', gain: '150%', min: 10, marks: ['Classy lady', 'Laborer', 'Postal worker', 'Young man', 'Young woman', 'Student'] },
+  { tier: 'Unsafe', pct: '~85%', gain: '200%', min: 40, marks: ['Rich kid', 'Sex worker', 'Thug'] },
+  { tier: 'Risky', pct: '~75%', gain: '250%', min: 50, marks: ['Jogger', 'Businessman', 'Businesswoman', 'Gang member', 'Mobster'] },
+  { tier: 'Dangerous', pct: '~50%', gain: '300%', min: 80, marks: ['Cyclist'] },
+  { tier: 'Very dangerous', pct: '~10%', gain: '350%', min: 100, marks: ['Police officer'] },
+];
+
+async function handlePickpocket(message) {
+  const userId = message.author.id;
+  const account = accountStore.getAccount(userId);
+  if (!account) {
+    await message.reply('You haven\'t connected a Torn account yet.\nUse `!torn setup` to get started.');
+    return;
+  }
+  const apiKey = accountStore.getApiKey(userId);
+  if (!apiKey) {
+    await message.reply('Your API key could not be retrieved. Use `!torn setup` to reconnect.');
+    return;
+  }
+  const reply = await message.reply('Fetching\u2026');
+  try {
+    const d = await tornGet('user', '', 'personalstats', 1, apiKey);
+    const skill = Math.floor(Number((d && d.personalstats && d.personalstats.pickpocketingskill) || 0));
+    const lines = [];
+    lines.push(`\u{1F9EC} **${account.tornUsername}** \u2014 Pickpocket (crime skill ${skill})`);
+    if (skill >= 100) {
+      lines.push(`\u{1F3C6} Maxed! Only the **Police officer** unique is left \u2014 take it running for *Pig Rustler*, at your own risk.`);
+    } else {
+      const best = PICKPOCKET_TIERS.filter((t) => skill >= t.min).pop() || PICKPOCKET_TIERS[0];
+      lines.push(`\u25B6 **Best tier now: ${best.tier}** \u2014 ${best.pct} success, ${best.gain} skill gain.`);
+      lines.push(`\u{1F4CC} Marks: ${best.marks.join(', ')}.`);
+      const next = PICKPOCKET_TIERS.find((t) => t.min > skill);
+      if (next) {
+        lines.push(`\u{1F51C} Next tier (${next.tier}) unlocks at skill ${next.min} \u2014 that\u2019s ${next.min - skill} more levels.`);
+      }
+    }
+    lines.push(`\u{1F4A1} Aim for \u201Con phone\u201D / \u201Clistening to music\u201D marks; avoid alert/watchful targets. A crit on a too-hard mark costs ~10x the gain.`);
+    lines.push(`\u26A0\uFE0F Never touch **Police officer** below max skill \u2014 it\u2019s the biggest crit penalty in the crime.`);
     await reply.edit(lines.join('\n'));
   } catch (e) {
     await reply.edit(`Torn error: ${e.message}`);
