@@ -8,7 +8,6 @@ const tornApi = require('./services/torn-api');
 const setupCommands = require('./commands/setup');
 const personalCommands = require('./commands/personal');
 const targetCommands = require('./commands/target');
-const baldrCommands = require('./commands/baldr');
 const junkCommands = require('./commands/junk');
 const happyjumpCommands = require('./commands/happyjump');
 const meritsCommands = require('./commands/merits');
@@ -168,7 +167,7 @@ const INTERVIEW = {
 const TORN_GUILD_ID = process.env.GUILD_ID || '';
 
 
-const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'stocks', 'stockforecast', 'stocksuggest', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'pickpocket', 'pp', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'baldr', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image', 'pray'];
+const TORN_COMMANDS = ['torn', 'faction', 'members', 'territory', 'item', 'prices', 'ph', 'pricehistory', 'watch', 'unwatch', 'watchlist', 'flips', 'stock', 'stocks', 'stockforecast', 'stocksuggest', 'travel', 'abroad', 'bars', 'link', 'guide', 'interview', 'gain', 'timers', 'crime', 'crimeroute', 'crime-route', 'pickpocket', 'pp', 'flipcalc', 'levelpacer', 'pacer', 'job', 'jobapply', 'job-apply', 'digest', 'alert', 'verify', 'bank', 'notify', 'junk', 'hj', 'happyjump', 'merits', 'perks', 'courses', 'activity', 'roster', 'finances',   'chainreport', 'armory', 'wars', 'arbitrage', 'points', 'auctions', 'museum', 'networth', 'medals', 'jobinfo', 'events', 'calendar', 'dirtybombs', 'bounties', 'ocs', 'known', 'tts', 'say', 'tz', 'image', 'pray'];
 
 const TORN_HELP_PUBLIC =
   '**Torn** — Public Commands\n' +
@@ -211,9 +210,8 @@ const TORN_HELP_MEMBER =
   '`!job-apply` — jobs you qualify for + interview\n' +
   '`!jobinfo` — current job, points, ranks\n' +
   '`!digest` — force the daily market digest\n' +
-  '`!target` — find easy kills (add/skip/scan/lists)\n' +
+  '`!target` — FFScouter easy kills near your level\n' +
   '`!hj` / `!hj guide` — happy jump helper\n' +
-  '`!baldr <name>` / `!baldr list <level>` — search Baldr\'s levelling list\n' +
   '`!flipcalc <item> <qty> <buy> [sell]` — profit calculator\n' +
   '`!flips` — buy-low/sell-high\n' +
   '`!arbitrage` — bazaar → item-market flip opportunities\n' +
@@ -592,9 +590,6 @@ async function handleCommand(message) {
     case 'target':
       if (!permissions.requireAccess(message, message.author.id, 'member')) break;
       await targetCommands.handleTarget(message, args);
-      break;
-    case 'baldr':
-      await baldrCommands.handleBaldr(message, args);
       break;
     case 'junk':
       await junkCommands.handleJunk(message, args);

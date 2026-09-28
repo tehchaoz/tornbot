@@ -218,269 +218,67 @@ function findClosest(inspected, self, skipIds, limit) {
   });
 }
 
-const HELP_TEXT =
-  '**!target** — find easy kills near your level. Targets come from **FFScouter** using your own registered key (no fallback).\n' +
-  '`!target ff [n]` — pull live-checked beatable targets from FFScouter (weakest FF first).\n' +
-  '`!target` — scan your FFScouter pool + personal whitelist.\n' +
-  '`!target closest` — show nearest-by-level candidates even if they are stronger.\n' +
-  '`!target add <id...>` — add players to your pool.\n' +
-  '`!target skip <id...>` — never suggest these.\n' +
-  '`!target rm <id...>` — remove from both lists.\n' +
-  '`!target list` — show your lists.\n' +
-  '`!target scan <id...>` — evaluate specific players.\n' +
-  'Requires `!torn setup` and registering that key at https://ffscouter.com (see the Setup section of the README).';
-
 async function handleTarget(message, args) {
   const userId = message.author.id;
-  const cmd = (args[0] || '').toLowerCase();
-
-  if (cmd === 'add' || cmd === 'rm' || cmd === 'remove' || cmd === 'list' || cmd === 'skip' || cmd === 'scan' || cmd === 'closest' || cmd === 'ff' || cmd === 'help') {
-    const rest = args.slice(1).join(' ');
-    const ids = parseIdList(rest);
-    const list = getTargetList(userId);
-
-    if (cmd === 'add' || cmd === 'skip') {
-      if (!ids.length) {
-        await message.reply(`Usage: \`!target ${cmd} <torn-id> [more ids...]\``);
-        return;
-      }
-      let count = 0;
-      for (const id of ids) {
-        if (cmd === 'skip' && !list.skip.includes(id)) { list.skip.push(id); count++; }
-        else if (cmd === 'add' && !list.include.includes(id) && !list.skip.includes(id)) { list.include.push(id); count++; }
-      }
-      saveTargetList(userId, list);
-      await message.reply(`Saved ${count} id${count === 1 ? '' : 's'}. Run \`!target\` to scan.`);
-      return;
-    }
-
-    if (cmd === 'rm' || cmd === 'remove') {
-      if (!ids.length) {
-        await message.reply('Usage: `!target rm <torn-id>`');
-        return;
-      }
-      let count = 0;
-      for (const id of ids) {
-        const before = list.include.length + list.skip.length;
-        list.include = list.include.filter((x) => x !== id);
-        list.skip = list.skip.filter((x) => x !== id);
-        if (before !== list.include.length + list.skip.length) count++;
-      }
-      saveTargetList(userId, list);
-      await message.reply(`Removed ${count} id${count === 1 ? '' : 's'}.`);
-      return;
-    }
-
-    if (cmd === 'list') {
-      const lines = [];
-      lines.push(`**Your target lists** (${userId})`);
-      lines.push(`In pool: ${list.include.length ? list.include.join(', ') : '— none —'}`);
-      lines.push(`Never suggest: ${list.skip.length ? list.skip.join(', ') : '— none —'}`);
-      await message.reply(lines.join('\n'));
-      return;
-    }
-
-    if (cmd === 'scan') {
-      if (!ids.length) {
-        await message.reply('Usage: `!target scan <torn-id> [more ids...]`');
-        return;
-      }
-      const reply = await message.reply('Scanning\u2026');
-      const { account, apiKey } = await resolveApiKey(userId);
-      const self = await fetchSelf(userId, apiKey);
-      const inspected = [];
-      for (const id of ids.slice(0, 12)) {
-        const c = await inspectCandidate(id, apiKey);
-        if (c) inspected.push(c);
-      }
-      const ffMap = await enrichWithFf(inspected.map((c) => c.id), apiKey);
-      for (const c of inspected) { const r = ffMap[c.id]; c.ff = r ? r.fair_fight : null; c.ffEst = r ? r.bs_estimate_human : null; }
-      const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).skip);
-      const lines = [`**Target scan** — you: Lv${self.level}, ${fmt(self.total)} total`];
-      if (good.length) {
-        good.slice(0, MAX_SHOW).forEach((c, i) => {
-          lines.push(`${i + 1}. **${c.name}** [${c.id}] \u00B7 Lv${c.level} \u00B7 ${fmt(c.total)} \u00B7 ${c.status.state}`);
-          lines.push(`   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`);
-        });
-      } else {
-        const closest = findClosest(inspected, self, getTargetList(userId).skip, MAX_SHOW);
-        if (closest.length) {
-          lines.push(`No confirmed easy targets in this batch \u2014 closest by level:`);
-          closest.forEach((c, i) => {
-            lines.push(`${i + 1}. **${c.name}** [${c.id}] \u00B7 Lv${c.level} \u00B7 ${fmt(c.total)} \u00B7 ${c.status.state} \u00B7 ${c.closestNote}`);
-            lines.push(`   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`);
-          });
-        } else {
-          lines.push('No easy targets found in this batch.');
-        }
-      }
-      lines.push('Tip: `!target add <id>` puts players in your pool; `!target skip <id>` hides them.');
-      await reply.edit(lines.join('\n'));
-      return;
-    }
-
-    if (cmd === 'help') {
-      await message.reply(HELP_TEXT);
-      return;
-    }
-  }
-
-  if (cmd === 'ff') {
-    const count = Math.min(parseInt(args[1], 10) || MAX_SHOW, 10);
-    const reply = await message.reply('Scouting FFScouter\u2026');
-    const { account, apiKey } = await resolveApiKey(userId);
-    const self = await fetchSelf(userId, apiKey);
-    let ff = [];
-    try {
-      const first = await tryFindFfTargets(apiKey, await ffParamsFor(self, 50, false));
-      ff = first.targets;
-      if (ff.length < 6) {
-        const second = await tryFindFfTargets(apiKey, await ffParamsFor(self, 50, true));
-        const seenIds = new Set(ff.map((t) => String(t.player_id)));
-        for (const t of second.targets) {
-          if (!seenIds.has(String(t.player_id))) { ff.push(t); seenIds.add(String(t.player_id)); }
-        }
-      }
-    } catch (e) {
-      const lines = ['🔧 **FFScouter** — lookup failed'];
-      lines.push(e.code === 6
-        ? 'Your Torn key isn\u2019t registered on FFScouter. Run `!torn setup` with your key, then register that same key at https://ffscouter.com (Setup: ffscouter section in the README). There is no fallback key.'
-        : `Error: ${e.message}`);
-      lines.push('Meanwhile `!target scan <id>` and `!target add <id>` still work.');
-      await reply.edit(lines.join('\n'));
-      return;
-    }
-    const skip = new Set(getTargetList(userId).skip);
-    const rows = [];
-    const seen = new Set();
-    let checked = 0;
-    const MAX_FF_INSPECT = 30;
-    for (const t of ff) {
-      if (checked >= MAX_FF_INSPECT) break;
-      if (t.hospital_until && t.hospital_until > Date.now() / 1000) continue;
-      if (seen.has(t.player_id)) continue;
-      seen.add(t.player_id);
-      const c = await inspectCandidate(t.player_id, apiKey);
-      checked++;
-      if (!c) continue;
-      if (skip.has(c.id)) continue;
-      if (c.faction && String(c.faction) === String(FACTION_ID)) continue;
-      if (!ATTACKABLE.has(c.status.state)) continue;
-      rows.push({ t, c });
-      if (rows.length >= count) break;
-    }
-    rows.sort((a, b) => (a.t.fair_fight ?? 99) - (b.t.fair_fight ?? 99));
-    const lines = [`🔧 **FFScouter targets for ${self.name}** (Lv${self.level}, ${fmt(self.total)} total)`];
-    lines.push('FF ~1.0–2.95 around your level (±25, active + inactive) — live-checked against Torn, weakest FF first:');
-    rows.slice(0, count).forEach(({ t, c }, i) => {
-      const details = [
-        `Lv${c.level}`,
-        c.total != null ? `${fmt(c.total)} total` : (t.bs_estimate_human ? `est ${t.bs_estimate_human}` : 'est —'),
-        `${c.status.state}`,
-        `${c.life ? fmt(c.life) + ' life' : ''}`.trim(),
-        `FF ${t.fair_fight}`,
-      ].filter(Boolean).join(' · ');
-      lines.push(
-        `${i + 1}. **${c.name}** [${c.id}] · ${details}\n   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
-      );
-    });
-    if (!rows.length) {
-      lines.push(`No live attackable targets in ${checked} FFScouter candidates — nobody “Okay” right now. Try again shortly.`);
-    }
-    if (ff.length > checked) lines.push(`(${ff.length - checked} more candidates not checked — run \`!target ff ${count + 5}\` next time)`);
-    lines.push('`!target add <id>` keeps keepers; `!target help` for the rest.');
-    await reply.edit(lines.join('\n'));
-    return;
-  }
-
-  if (cmd === 'closest') {
-    const count = Math.min(parseInt(args[1], 10) || MAX_SHOW, 10);
-    const reply = await message.reply('Hunting\u2026');
-    const { account, apiKey } = await resolveApiKey(userId);
-    const self = await fetchSelf(userId, apiKey);
-    const { candidates } = await buildCandidates(userId, apiKey, self, []);
-    const unique = Array.from(new Set(candidates.map((c) => c.id)));
-    const toInspect = unique.slice(0, CANDIDATE_CAP);
-    const inspected = [];
-    for (const id of toInspect) {
-      const c = await inspectCandidate(id, apiKey);
-      if (c) inspected.push(c);
-    }
-    const ffMap = await enrichWithFf(inspected.map((c) => c.id), apiKey);
-    for (const c of inspected) { const r = ffMap[c.id]; c.ff = r ? r.fair_fight : null; c.ffEst = r ? r.bs_estimate_human : null; }
-    const closest = findClosest(inspected, self, getTargetList(userId).skip, count);
-    const lines = [`🎯 **Closest targets for ${self.name}** (Lv${self.level}, ${fmt(self.total)} total)`];
-    if (closest.length) {
-      lines.push('Nearest by level in your pool (NOT confirmed easy):');
-      closest.forEach((c, i) => {
-        lines.push(
-          `${i + 1}. **${c.name}** [${c.id}] · Lv${c.level} · ${fmt(c.total)} total · ${c.status.state} · ${c.closestNote}\n   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
-        );
-      });
-    } else {
-      lines.push('No alive, non-faction candidates in your pool to show.');
-    }
-    lines.push('`!target add <id>` adds players so they appear here / `!target scan <id>` checks them live.');
-    await reply.edit(lines.join('\n'));
-    return;
-  }
-
   const count = Math.min(parseInt(args[0], 10) || MAX_SHOW, 10);
-
-  const reply = await message.reply('Hunting\u2026');
-  const { account, apiKey } = await resolveApiKey(userId);
+  const reply = await message.reply('Scouting FFScouter\u2026');
+  const { apiKey } = await resolveApiKey(userId);
   const self = await fetchSelf(userId, apiKey);
-
-  const { candidates, ffCount, ffRegistered } = await buildCandidates(userId, apiKey, self, []);
-  const unique = Array.from(new Set(candidates.map((c) => c.id)));
-  const toInspect = unique.slice(0, CANDIDATE_CAP);
-  const others = Math.max(0, unique.length - toInspect.length);
-
-  const inspected = [];
-  for (const id of toInspect) {
-    const c = await inspectCandidate(id, apiKey);
-    if (c) inspected.push(c);
-  }
-  const ffMap = await enrichWithFf(inspected.map((c) => c.id), apiKey);
-  for (const c of inspected) { const r = ffMap[c.id]; c.ff = r ? r.fair_fight : null; c.ffEst = r ? r.bs_estimate_human : null; }
-
-  const { good, skipped } = rankCandidates(inspected, self, getTargetList(userId).skip);
-
-  const lines = [];
-  lines.push(`🎯 **Easy targets for ${self.name}** (Lv${self.level}, ${fmt(self.total)} total)`);
-  lines.push(`Pool: ${unique.length} unique (ffscouter ${ffCount}, whitelist ${getTargetList(userId).include.length})${others ? `, ${others} more not scanned` : ''}`);
-  if (good.length) {
-    lines.push(`Found **${good.length}** attackable with lower stats:`);
-    good.slice(0, count).forEach((c, i) => {
-      lines.push(
-        `${i + 1}. **${c.name}** [${c.id}] · Lv${c.level} · ${fmt(c.total)} total${c.life ? ' · ' + fmt(c.life) + ' life' : ''}${c.ff != null ? ' · FF ' + c.ff : ''}\n   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
-      );
-    });
-  } else {
-    if (!ffRegistered && !getTargetList(userId).include.length) {
-      lines.push('No FFScouter pool — your Torn key isn\u2019t registered on FFScouter. Run `!torn setup`, then register that key at https://ffscouter.com (Setup in the README).');
-      await reply.edit(lines.join('\n'));
-      return;
-    }
-    const closest = findClosest(inspected, self, getTargetList(userId).skip, count);
-    if (closest.length) {
-      lines.push(`No confirmed easy targets — here are the **closest by level** in your pool (${closest.length <= count ? '' : '\u2014 all still checkable with \`!target scan\`'}):`);
-      closest.forEach((c, i) => {
-        lines.push(
-          `${i + 1}. **${c.name}** [${c.id}] · Lv${c.level} · ${fmt(c.total)} total · ${c.status.state} · ${c.closestNote}\n   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
-        );
-      });
-      lines.push('These are *not* confirmed easy — you gain XP by attacking while **Leave**ing. Re-run `!target` as you level.');
-      if (skipped.hospital.length || skipped.higher.length || skipped.band.length) {
-        lines.push(`Skipped: ${skipped.hospital.length} in hospital, ${skipped.higher.length} with higher stats, ${skipped.band.length} out of level band, ${skipped.faction.length} faction mates, ${skipped.skippedList.length} on your skip list, ${skipped.unknown.length} with stats unknown.`);
+  let ff = [];
+  try {
+    const first = await tryFindFfTargets(apiKey, await ffParamsFor(self, 50, false));
+    ff = first.targets;
+    if (ff.length < 6) {
+      const second = await tryFindFfTargets(apiKey, await ffParamsFor(self, 50, true));
+      const seenIds = new Set(ff.map((t) => String(t.player_id)));
+      for (const t of second.targets) {
+        if (!seenIds.has(String(t.player_id))) { ff.push(t); seenIds.add(String(t.player_id)); }
       }
-      await reply.edit(lines.join('\n'));
-      return;
     }
-    lines.push('No easy targets found — everyone in your pool is stronger, hospitalized, or out of your level band.');
+  } catch (e) {
+    const lines = ['🔧 **FFScouter** — lookup failed'];
+    lines.push(e.code === 6
+      ? 'Your Torn key isn\u2019t registered on FFScouter. Run `!torn setup` with your key, then register that same key at https://ffscouter.com. There is no fallback key.'
+      : `Error: ${e.message}`);
+    await reply.edit(lines.join('\n'));
+    return;
   }
-  if (skipped.hospital.length) lines.push(`Skipped: ${skipped.hospital.length} in hospital, ${skipped.higher.length} with higher stats, ${skipped.band.length} out of level band, ${skipped.faction.length} faction mates, ${skipped.skippedList.length} on your skip list, ${skipped.unknown.length} with stats unknown.`);
-  lines.push('`!target add <id>` / `!target skip <id>` / `!target help`');
+  const rows = [];
+  const seen = new Set();
+  let checked = 0;
+  const MAX_FF_INSPECT = 30;
+  for (const t of ff) {
+    if (checked >= MAX_FF_INSPECT) break;
+    if (t.hospital_until && t.hospital_until > Date.now() / 1000) continue;
+    if (seen.has(t.player_id)) continue;
+    seen.add(t.player_id);
+    const c = await inspectCandidate(t.player_id, apiKey);
+    checked++;
+    if (!c) continue;
+    if (c.faction && String(c.faction) === String(FACTION_ID)) continue;
+    if (!ATTACKABLE.has(c.status.state)) continue;
+    rows.push({ t, c });
+    if (rows.length >= count) break;
+  }
+  rows.sort((a, b) => (a.t.fair_fight ?? 99) - (b.t.fair_fight ?? 99));
+  const lines = [`🔧 **FFScouter targets for ${self.name}** (Lv${self.level}, ${fmt(self.total)} total)`];
+  lines.push('FF ~1.0–2.95 around your level (±25, active + inactive) — live-checked against Torn, weakest FF first:');
+  rows.slice(0, count).forEach(({ t, c }, i) => {
+    const details = [
+      `Lv${c.level}`,
+      c.total != null ? `${fmt(c.total)} total` : (t.bs_estimate_human ? `est ${t.bs_estimate_human}` : 'est —'),
+      `${c.status.state}`,
+      `${c.life ? fmt(c.life) + ' life' : ''}`.trim(),
+      `FF ${t.fair_fight}`,
+    ].filter(Boolean).join(' · ');
+    lines.push(
+      `${i + 1}. **${c.name}** [${c.id}] · ${details}\n   https://www.torn.com/page.php?sid=attack&user2ID=${c.id}`
+    );
+  });
+  if (!rows.length) {
+    lines.push(`No live attackable targets in ${checked} FFScouter candidates — nobody “Okay” right now. Try again shortly.`);
+  }
+  if (ff.length > checked) lines.push(`(${ff.length - checked} more candidates not checked — run \`!target ${count + 5}\` next time)`);
   await reply.edit(lines.join('\n'));
 }
 
