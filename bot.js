@@ -51,6 +51,7 @@ const OC_CHANNEL_ID = process.env.OC_CHANNEL_ID || CHAIN_CHANNEL_ID || '';
 const BANK_CHANNEL_ID = process.env.BANK_CHANNEL_ID || CHAIN_CHANNEL_ID || '';
 const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID || CHAIN_CHANNEL_ID || '';
 const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID || '';
+const COUNTRY_BOARD_CHANNEL_ID = process.env.COUNTRY_BOARD_CHANNEL_ID || '';
 
 // Server-only features (!image, !tts, !say). Disabled unless ENABLE_LOCAL_MEDIA=true.
 const ENABLE_LOCAL_MEDIA = (process.env.ENABLE_LOCAL_MEDIA || '').toLowerCase() === 'true';
@@ -319,6 +320,13 @@ client.once(Events.ClientReady, (c) => {
       await updateMembersBoard();
     } catch (e) {
       console.error('[discord-bot] members board init failed:', e.message);
+    }
+    try {
+      lastCountryBoardRun = 0;
+      await updateCountryBoard();
+      setInterval(() => { updateCountryBoard().catch((e) => console.error('[discord-bot] country board tick failed:', e.message)); }, COUNTRY_BOARD_INTERVAL_MS);
+    } catch (e) {
+      console.error('[discord-bot] country board init failed:', e.message);
     }
   })();
   loadLinks();
@@ -3084,6 +3092,123 @@ async function updateMembersBoardInChannel(channelId) {
     }
   } catch (e) {
     console.error('[discord-bot] members board update failed:', e.message);
+  }
+}
+
+// ─── Country board ─────────────────────────────────────────────────────────
+// Group faction members by where they are right now (home / traveling / abroad)
+// and refresh a pinned message every 5 minutes.
+const COUNTRY_BOARD_FILE = '/opt/discord-bot/country-board.json';
+const COUNTRY_BOARD_INTERVAL_MS = 5 * 60 * 1000;
+
+function countryBoardState() {
+  try {
+    if (fs.existsSync(COUNTRY_BOARD_FILE)) {
+      const s = JSON.parse(fs.readFileSync(COUNTRY_BOARD_FILE, 'utf8'));
+      return { msgId: s.msgId || null, channelId: s.channelId || COUNTRY_BOARD_CHANNEL_ID };
+    }
+  } catch (e) {}
+  return { msgId: null, channelId: COUNTRY_BOARD_CHANNEL_ID };
+}
+
+function saveCountryBoardState(state) {
+  try {
+    fs.writeFileSync(COUNTRY_BOARD_FILE, JSON.stringify({ msgId: state.msgId || null, channelId: state.channelId || COUNTRY_BOARD_CHANNEL_ID }));
+  } catch (e) {}
+}
+
+// Torn country codes → display names (same set used by !travel).
+const COUNTRY_DISPLAY = {
+  mex: 'Mexico', cay: 'Cayman Islands', can: 'Canada', haw: 'Hawaii', uni: 'United Kingdom',
+  arg: 'Argentina', swi: 'Switzerland', jap: 'Japan', chi: 'China', uae: 'UAE', sou: 'South Africa',
+};
+
+// Torn reports the destination country via status.details when abroad (the code),
+// or in status.description when traveling ("Traveling from Torn to Japan").
+function countryForMember(m) {
+  const state = m.status ? m.status.state : null;
+  const details = (m.status && m.status.details) || '';
+  const description = (m.status && m.status.description) || '';
+
+  if (state === 'Traveling') {
+    const dest = description.replace(/^.*\bto\s+/i, '').trim();
+    if (dest && dest.toLowerCase() !== 'torn') return { bucket: 'traveling', country: dest };
+    return { bucket: 'traveling', country: 'Torn' };
+  }
+  if (state === 'Abroad') {
+    if (details) return { bucket: 'abroad', country: COUNTRY_DISPLAY[details.toLowerCase()] || details };
+    const dest = description.replace(/^.*\bin\s+/i, '').trim();
+    if (dest) return { bucket: 'abroad', country: dest };
+    return { bucket: 'abroad', country: 'Abroad' };
+  }
+  return { bucket: 'home', country: 'Torn' };
+}
+
+function buildCountryBoardEmbed(d, selfName) {
+  const rows = Object.entries(d.members || {}).map(([playerId, m]) => ({
+    playerId,
+    name: m.name,
+    level: m.level,
+    ...countryForMember(m),
+  }));
+
+  const groups = { home: [], traveling: [], abroad: [] };
+  for (const r of rows) groups[r.bucket].push(r);
+
+  const lines = [];
+  const renderGroup = (label, items) => {
+    if (!items.length) return;
+    lines.push(`**${label}** (${items.length})`);
+    for (const it of items.sort((a, b) => a.name.localeCompare(b.name))) {
+      lines.push(`\u2022 [${it.name}](${profileUrl(it.playerId)}) \u00B7 L${it.level}${it.bucket !== 'home' ? ` \u00B7 ${it.country}` : ''}`);
+    }
+    lines.push('');
+  };
+
+  renderGroup('\u{1F3E0} In Torn', groups.home);
+  renderGroup('\u2708\uFE0F Traveling', groups.traveling);
+  renderGroup('\u{1F30D} Abroad', groups.abroad);
+
+  const desc = lines.join('\n').trim() || 'No members found.';
+  return {
+    title: `\u{1F30D} Faction Countries \u2014 ${rows.length} members`,
+    description: desc,
+    color: 0x57f287,
+    footer: { text: 'Updates every 5 minutes \u00B7 home \u00B7 traveling \u00B7 abroad' },
+  };
+}
+
+let lastCountryBoardRun = 0;
+async function updateCountryBoard() {
+  const channelId = COUNTRY_BOARD_CHANNEL_ID;
+  if (!channelId) return;
+  const now = Date.now();
+  if (now - lastCountryBoardRun < COUNTRY_BOARD_INTERVAL_MS) return;
+  lastCountryBoardRun = now;
+
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel || !channel.messages) return;
+    const d = await tornGet('faction', FACTION_ID, 'basic');
+    if (!d || !d.members) return;
+
+    const embed = buildCountryBoardEmbed(d);
+    const state = countryBoardState();
+    let msg = null;
+    if (state.msgId) {
+      try { msg = await channel.messages.fetch(state.msgId); } catch (e) { msg = null; }
+    }
+    if (msg) {
+      await msg.edit({ content: '', embeds: [embed] });
+      if (!msg.pinned) { try { await msg.pin(); } catch (e) {} }
+    } else {
+      msg = await channel.send({ embeds: [embed] });
+      state.msgId = msg.id;
+      saveCountryBoardState(state);
+      try { await msg.pin(); } catch (e) { console.error('[discord-bot] country board pin failed:', e.message); }
+    }
+  } catch (e) {
+    console.error('[discord-bot] country board update failed:', e.message);
   }
 }
 
